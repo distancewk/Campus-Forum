@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.post.mapper.PostMapper">
+
+    <!-- ============ ResultMap: PostVO（详情，联查 author / board） ============ -->
+    <resultMap id="postVOResultMap" type="com.campus.post.dto.PostVO">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="viewCount" column="view_count"/>
+        <result property="likeCount" column="like_count"/>
+        <result property="commentCount" column="comment_count"/>
+        <result property="favCount" column="fav_count"/>
+        <result property="isPinned" column="is_pinned"/>
+        <result property="isFeatured" column="is_featured"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <association property="author" javaType="com.campus.user.dto.AuthorVO">
+            <id property="id" column="author_id"/>
+            <result property="nickname" column="author_nickname"/>
+            <result property="avatar" column="author_avatar"/>
+        </association>
+        <association property="board" javaType="com.campus.board.dto.BoardVO">
+            <id property="id" column="board_id"/>
+            <result property="name" column="board_name"/>
+            <result property="description" column="board_description"/>
+            <result property="icon" column="board_icon"/>
+        </association>
+    </resultMap>
+
+    <!-- ============ 分页查询帖子列表 ============ -->
+    <select id="selectPostList" resultType="com.campus.post.dto.PostListVO">
+        SELECT
+            p.id,
+            p.title,
+            LEFT(regexp_replace(p.content, '&lt;[^&gt;]*&gt;', '', 'g'), 100) AS summary,
+            u.nickname AS author_nickname,
+            u.avatar   AS author_avatar,
+            b.id       AS board_id,
+            b.name     AS board_name,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.is_pinned,
+            p.is_featured,
+            p.created_at
+        FROM post p
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE p.deleted = 0 AND p.status = 1
+        <if test="query.boardId != null">
+            AND p.board_id = #{query.boardId}
+        </if>
+        <if test="query.keyword != null and query.keyword != ''">
+            AND (p.title ILIKE CONCAT('%', #{query.keyword}, '%')
+                 OR p.content ILIKE CONCAT('%', #{query.keyword}, '%'))
+        </if>
+        <choose>
+            <when test='query.sort == "featured"'>
+                AND p.is_featured = true
+                ORDER BY p.created_at DESC
+            </when>
+            <when test='query.sort == "hot"'>
+                ORDER BY p.is_pinned DESC, p.hot_score DESC
+            </when>
+            <otherwise>
+                ORDER BY p.created_at DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- ============ 查询帖子详情（联查 author / board） ============ -->
+    <select id="selectPostDetail" resultMap="postVOResultMap">
+        SELECT
+            p.id,
+            p.title,
+            p.content,
+            p.author_id,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.fav_count,
+            p.is_pinned,
+            p.is_featured,
+            p.status,
+            p.created_at,
+            u.nickname   AS author_nickname,
+            u.avatar     AS author_avatar,
+            b.id         AS board_id,
+            b.name       AS board_name,
+            b.description AS board_description,
+            b.icon       AS board_icon
+        FROM post p
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE p.id = #{postId} AND p.deleted = 0
+    </select>
+
+    <!-- ============ 查询已发布帖子详情（联查 author / board） ============ -->
+    <select id="selectPublishedPostDetail" resultMap="postVOResultMap">
+        SELECT
+            p.id,
+            p.title,
+            p.content,
+            p.author_id,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.fav_count,
+            p.is_pinned,
+            p.is_featured,
+            p.status,
+            p.created_at,
+            u.nickname   AS author_nickname,
+            u.avatar     AS author_avatar,
+            b.id         AS board_id,
+            b.name       AS board_name,
+            b.description AS board_description,
+            b.icon       AS board_icon
+        FROM post p
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE p.id = #{postId} AND p.deleted = 0 AND p.status = 1
+    </select>
+
+    <!-- ============ 浏览量 +1（原子操作） ============ -->
+    <update id="incrementViewCount">
+        UPDATE post SET view_count = view_count + 1 WHERE id = #{postId} AND deleted = 0
+    </update>
+
+    <!-- ============ 点赞数增减 ============ -->
+    <update id="updateLikeCount">
+        UPDATE post SET like_count = GREATEST(like_count + #{delta}, 0) WHERE id = #{postId} AND deleted = 0
+    </update>
+
+    <!-- ============ 评论数增减 ============ -->
+    <update id="updateCommentCount">
+        UPDATE post SET comment_count = GREATEST(comment_count + #{delta}, 0) WHERE id = #{postId} AND deleted = 0
+    </update>
+
+    <!-- ============ 收藏数增减 ============ -->
+    <update id="updateFavCount">
+        UPDATE post SET fav_count = GREATEST(fav_count + #{delta}, 0) WHERE id = #{postId} AND deleted = 0
+    </update>
+
+    <!-- ============ 搜索帖子（关键词匹配标题或内容，可选板块筛选） ============ -->
+    <select id="searchPosts" resultType="com.campus.post.dto.PostListVO">
+        SELECT
+            p.id,
+            p.title,
+            LEFT(regexp_replace(p.content, '&lt;[^&gt;]*&gt;', '', 'g'), 100) AS summary,
+            u.nickname AS author_nickname,
+            u.avatar   AS author_avatar,
+            b.id       AS board_id,
+            b.name     AS board_name,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.is_pinned,
+            p.is_featured,
+            p.created_at
+        FROM post p
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE p.deleted = 0 AND p.status = 1
+	          AND (p.title ILIKE CONCAT('%', #{query.keyword}, '%')
+	               OR p.content ILIKE CONCAT('%', #{query.keyword}, '%'))
+        <if test="query.boardId != null">
+            AND p.board_id = #{query.boardId}
+        </if>
+        ORDER BY p.created_at DESC
+    </select>
+
+    <!-- ============ 批量重新计算近7天帖子的热度分 ============ -->
+    <update id="recalculateHotScore">
+        UPDATE post SET hot_score =
+            (like_count * 3.0 + comment_count * 2.0 + fav_count * 1.0)
+            / POWER(EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 + 2, 1.5)
+        WHERE created_at > NOW() - INTERVAL '7 days'
+          AND deleted = 0 AND status = 1
+    </update>
+
+    <!-- ============ 查询待审核帖子列表（联查 author / board） ============ -->
+    <select id="selectPendingPosts" resultType="com.campus.post.dto.PostListVO">
+        SELECT
+            p.id,
+            p.title,
+            LEFT(regexp_replace(p.content, '&lt;[^&gt;]*&gt;', '', 'g'), 100) AS summary,
+            u.nickname AS author_nickname,
+            u.avatar   AS author_avatar,
+            b.id       AS board_id,
+            b.name     AS board_name,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.is_pinned,
+            p.is_featured,
+            p.created_at
+        FROM post p
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE p.status = 0 AND p.deleted = 0
+        ORDER BY p.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- ============ 查询各板块帖子数统计 ============ -->
+    <select id="selectBoardStats" resultType="com.campus.admin.dto.BoardStat">
+        SELECT
+            b.name AS boardName,
+            COUNT(p.id) AS postCount
+        FROM board b
+        LEFT JOIN post p ON b.id = p.board_id AND p.deleted = 0
+        WHERE b.deleted = 0
+        GROUP BY b.id, b.name
+        ORDER BY postCount DESC
+    </select>
+
+</mapper>

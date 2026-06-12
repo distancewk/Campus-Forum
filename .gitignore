@@ -1,0 +1,44 @@
+.DS_Store
+
+# dependencies
+node_modules/
+**/node_modules/
+
+# frontend build output
+dist/
+**/dist/
+
+# backend build output
+target/
+**/target/
+
+# runtime output
+logs/
+**/logs/
+uploads/
+**/uploads/
+.run-logs/
+.playwright-cli/
+output/
+
+# local configuration
+.env
+.env.*
+!.env.example
+.claude/
+test-access.txt
+
+# inactive local workspaces
+campus-forum-backend-test/
+campus-forum-frontend/
+
+# editor and OS noise
+.idea/
+.vscode/
+*.iml
+
+# package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

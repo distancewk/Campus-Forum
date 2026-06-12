@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.auth.mapper.UserMapper">
+
+    <!-- 查询用户资料，联查发帖数和获赞数 -->
+    <select id="selectProfileById" resultType="com.campus.user.dto.UserProfileVO">
+        SELECT
+            u.id,
+            u.student_no AS studentNo,
+            u.nickname,
+            u.avatar,
+            u.bio,
+            u.created_at AS createdAt,
+            COALESCE(p.post_count, 0)  AS postCount,
+            COALESCE(p.like_count, 0)  AS likeCount
+        FROM "user" u
+        LEFT JOIN (
+            SELECT
+                author_id,
+                COUNT(*)       AS post_count,
+                SUM(like_count) AS like_count
+            FROM post
+            WHERE deleted = 0 AND status = 1
+            GROUP BY author_id
+        ) p ON u.id = p.author_id
+        WHERE u.id = #{id} AND u.deleted = 0
+    </select>
+
+    <!-- 管理员查询用户列表（含发帖数） -->
+    <select id="selectAdminUserList" resultType="com.campus.admin.dto.UserAdminVO">
+        SELECT
+            u.id,
+            u.student_no AS studentNo,
+            u.nickname,
+            u.email,
+            u.role,
+            u.status,
+            u.created_at AS createdAt,
+            u.locked_until AS lockedUntil,
+            COALESCE(p.post_count, 0) AS postCount
+        FROM "user" u
+        LEFT JOIN (
+            SELECT author_id, COUNT(*) AS post_count
+            FROM post
+            WHERE deleted = 0
+            GROUP BY author_id
+        ) p ON u.id = p.author_id
+        WHERE u.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (u.nickname ILIKE CONCAT('%', #{keyword}, '%')
+                 OR u.student_no ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND u.status = #{status}
+        </if>
+        ORDER BY u.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 管理员查询用户总数 -->
+    <select id="countAdminUserList" resultType="long">
+        SELECT COUNT(*)
+        FROM "user" u
+        WHERE u.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (u.nickname ILIKE CONCAT('%', #{keyword}, '%')
+                 OR u.student_no ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND u.status = #{status}
+        </if>
+    </select>
+
+    <!-- 查询 N 天内活跃用户数（发帖或评论的用户） -->
+    <select id="selectActiveUsers" resultType="long">
+        SELECT COUNT(DISTINCT author_id) FROM (
+            SELECT author_id FROM post
+            WHERE created_at >= NOW() - (#{days} || ' days')::INTERVAL
+            UNION
+            SELECT author_id FROM comment
+            WHERE created_at >= NOW() - (#{days} || ' days')::INTERVAL
+        ) t
+    </select>
+
+</mapper>

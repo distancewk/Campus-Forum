@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.message.mapper.MessageMapper">
+
+    <!-- ============ 查询会话列表（最近联系人） ============ -->
+    <select id="selectConversations" resultType="com.campus.message.dto.ConversationVO">
+        WITH ranked_messages AS (
+            SELECT
+                CASE WHEN sender_id = #{userId} THEN receiver_id ELSE sender_id END AS other_user_id,
+                content,
+                created_at,
+                CASE WHEN receiver_id = #{userId} AND is_read = FALSE THEN 1 ELSE 0 END AS is_unread,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CASE WHEN sender_id = #{userId} THEN receiver_id ELSE sender_id END
+                    ORDER BY created_at DESC
+                ) AS rn
+            FROM message
+            WHERE (sender_id = #{userId} AND deleted_by_sender = 0)
+               OR (receiver_id = #{userId} AND deleted_by_receiver = 0)
+        )
+        SELECT
+            rm.other_user_id AS userId,
+            u.nickname,
+            u.avatar,
+            rm.content AS lastMessage,
+            rm.created_at AS lastTime,
+            COALESCE(unread.unread_count, 0) AS unreadCount
+        FROM ranked_messages rm
+        JOIN "user" u ON rm.other_user_id = u.id AND u.deleted = 0
+        LEFT JOIN (
+            SELECT
+                CASE WHEN sender_id = #{userId} THEN receiver_id ELSE sender_id END AS other_user_id,
+                COUNT(*) AS unread_count
+            FROM message
+            WHERE receiver_id = #{userId} AND is_read = FALSE AND deleted_by_receiver = 0
+            GROUP BY CASE WHEN sender_id = #{userId} THEN receiver_id ELSE sender_id END
+        ) unread ON rm.other_user_id = unread.other_user_id
+        WHERE rm.rn = 1
+        ORDER BY rm.created_at DESC
+    </select>
+
+    <!-- ============ 查询聊天记录（联查发送者和接收者信息） ============ -->
+    <select id="selectChatHistory" resultType="com.campus.message.dto.MessageVO">
+        SELECT
+            m.id,
+            m.sender_id AS senderId,
+            s.nickname AS senderNickname,
+            s.avatar AS senderAvatar,
+            m.receiver_id AS receiverId,
+            r.nickname AS receiverNickname,
+            m.content,
+            m.is_read AS isRead,
+            m.created_at AS createdAt
+        FROM message m
+        JOIN "user" s ON m.sender_id = s.id AND s.deleted = 0
+        JOIN "user" r ON m.receiver_id = r.id AND r.deleted = 0
+        WHERE (
+            (m.sender_id = #{userId} AND m.receiver_id = #{otherUserId} AND m.deleted_by_sender = 0)
+            OR
+            (m.sender_id = #{otherUserId} AND m.receiver_id = #{userId} AND m.deleted_by_receiver = 0)
+        )
+        ORDER BY m.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- ============ 查询聊天记录总数 ============ -->
+    <select id="countChatHistory" resultType="long">
+        SELECT COUNT(*)
+        FROM message m
+        WHERE (
+            (m.sender_id = #{userId} AND m.receiver_id = #{otherUserId} AND m.deleted_by_sender = 0)
+            OR
+            (m.sender_id = #{otherUserId} AND m.receiver_id = #{userId} AND m.deleted_by_receiver = 0)
+        )
+    </select>
+
+    <!-- ============ 标记消息为已读 ============ -->
+    <update id="markAsRead">
+        UPDATE message
+        SET is_read = TRUE
+        WHERE sender_id = #{otherUserId}
+          AND receiver_id = #{userId}
+          AND is_read = FALSE
+          AND deleted_by_receiver = 0
+    </update>
+
+    <!-- ============ 查询未读消息数 ============ -->
+    <select id="selectUnreadCount" resultType="int">
+        SELECT COUNT(*)
+        FROM message
+        WHERE receiver_id = #{userId}
+          AND is_read = FALSE
+          AND deleted_by_receiver = 0
+    </select>
+
+</mapper>

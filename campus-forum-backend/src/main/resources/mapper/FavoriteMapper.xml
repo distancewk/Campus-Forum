@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.interaction.mapper.FavoriteMapper">
+
+    <!-- ============ 查询用户收藏的帖子总数 ============ -->
+    <select id="countFavoritePosts" resultType="long">
+        SELECT COUNT(*)
+        FROM favorite f
+        JOIN post p ON f.post_id = p.id AND p.deleted = 0 AND p.status = 1
+        WHERE f.user_id = #{userId}
+    </select>
+
+    <!-- ============ 分页查询用户收藏的帖子（联查 post / author / board） ============ -->
+    <select id="selectFavoritePosts" resultType="com.campus.post.dto.PostListVO">
+        SELECT
+            p.id,
+            p.title,
+            LEFT(regexp_replace(p.content, '&lt;[^&gt;]*&gt;', '', 'g'), 100) AS summary,
+            u.nickname AS author_nickname,
+            u.avatar   AS author_avatar,
+            b.id       AS board_id,
+            b.name     AS board_name,
+            p.view_count,
+            p.like_count,
+            p.comment_count,
+            p.is_pinned,
+            p.is_featured,
+            p.created_at
+        FROM favorite f
+        JOIN post p ON f.post_id = p.id AND p.deleted = 0 AND p.status = 1
+        JOIN "user" u ON p.author_id = u.id AND u.deleted = 0
+        JOIN board b ON p.board_id = b.id
+        WHERE f.user_id = #{userId}
+        ORDER BY f.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

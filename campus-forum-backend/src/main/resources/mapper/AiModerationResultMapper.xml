@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.ai.mapper.AiModerationResultMapper">
+    <insert id="insertResult" parameterType="com.campus.ai.entity.AiModerationResult"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_moderation_result (
+            target_type,
+            target_id,
+            author_id,
+            risk_level,
+            risk_types,
+            confidence,
+            reasons,
+            suggested_action,
+            model_name,
+            status,
+            created_at,
+            reviewed_by,
+            reviewed_at
+        ) VALUES (
+            #{targetType},
+            #{targetId},
+            #{authorId},
+            #{riskLevel},
+            CAST(#{riskTypes} AS jsonb),
+            #{confidence},
+            CAST(#{reasons} AS jsonb),
+            #{suggestedAction},
+            #{modelName},
+            #{status},
+            #{createdAt},
+            #{reviewedBy},
+            #{reviewedAt}
+        )
+    </insert>
+
+    <update id="markReviewed">
+        UPDATE ai_moderation_result
+        SET status = #{status},
+            reviewed_by = #{adminId},
+            reviewed_at = NOW()
+        WHERE target_type = #{targetType}
+          AND target_id = #{targetId}
+    </update>
+
+    <select id="selectAdminModerationList" resultType="com.campus.ai.dto.AdminModerationVO">
+        SELECT
+            id,
+            target_type,
+            target_id,
+            author_id,
+            risk_level,
+            risk_types::text AS risk_types,
+            confidence,
+            reasons::text AS reasons,
+            suggested_action,
+            model_name,
+            status,
+            created_at,
+            reviewed_by,
+            reviewed_at
+        FROM ai_moderation_result
+        WHERE 1 = 1
+        <if test="targetType != null and targetType != ''">
+            AND target_type = #{targetType}
+        </if>
+        <if test="riskLevel != null and riskLevel != ''">
+            AND risk_level = #{riskLevel}
+        </if>
+        <if test="riskType != null and riskType != ''">
+            AND jsonb_exists(risk_types, #{riskType})
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminModerationList" resultType="long">
+        SELECT COUNT(*)
+        FROM ai_moderation_result
+        WHERE 1 = 1
+        <if test="targetType != null and targetType != ''">
+            AND target_type = #{targetType}
+        </if>
+        <if test="riskLevel != null and riskLevel != ''">
+            AND risk_level = #{riskLevel}
+        </if>
+        <if test="riskType != null and riskType != ''">
+            AND jsonb_exists(risk_types, #{riskType})
+        </if>
+    </select>
+</mapper>

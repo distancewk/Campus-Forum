@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.board.mapper.BoardMapper">
+
+    <!-- 查询启用状态的板块列表，联查帖子数，按 sortOrder 排序 -->
+    <select id="selectBoardListWithPostCount" resultType="com.campus.board.dto.BoardVO">
+        SELECT
+            b.id,
+            b.name,
+            b.description,
+            b.icon,
+            COALESCE(p.post_count, 0) AS postCount
+        FROM board b
+        LEFT JOIN (
+            SELECT board_id, COUNT(*) AS post_count
+            FROM post
+            WHERE deleted = 0 AND status = 1
+            GROUP BY board_id
+        ) p ON b.id = p.board_id
+        WHERE b.status = 1
+        ORDER BY b.sort_order ASC, b.id ASC
+    </select>
+
+    <!-- 查询指定板块下的帖子数量（用于删除前检查） -->
+    <select id="selectPostCountByBoardId" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM post
+        WHERE board_id = #{boardId}
+          AND deleted = 0
+    </select>
+
+</mapper>

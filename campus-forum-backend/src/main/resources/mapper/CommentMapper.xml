@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.comment.mapper.CommentMapper">
+
+    <!-- ============ ResultMap: CommentVO（含 author 嵌套） ============ -->
+    <resultMap id="commentVOResultMap" type="com.campus.comment.dto.CommentVO">
+        <id property="id" column="id"/>
+        <result property="content" column="content"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="likeCount" column="like_count"/>
+        <result property="status" column="status"/>
+        <result property="isFeatured" column="is_featured"/>
+        <result property="createdAt" column="created_at"/>
+        <association property="author" javaType="com.campus.user.dto.AuthorVO">
+            <id property="id" column="author_id"/>
+            <result property="nickname" column="author_nickname"/>
+            <result property="avatar" column="author_avatar"/>
+        </association>
+        <association property="replyToUser" javaType="com.campus.user.dto.AuthorVO">
+            <id property="id" column="reply_to_user_id"/>
+            <result property="nickname" column="reply_to_nickname"/>
+            <result property="avatar" column="reply_to_avatar"/>
+        </association>
+    </resultMap>
+
+    <!-- ============ 查询顶层评论总数 ============ -->
+    <select id="countTopLevelComments" resultType="long">
+        SELECT COUNT(*)
+        FROM comment
+        WHERE post_id = #{postId}
+          AND parent_id IS NULL
+          AND deleted = 0
+          AND status = 1
+    </select>
+
+    <!-- ============ 分页查询顶层评论（联查 author） ============ -->
+    <select id="selectTopLevelComments" resultMap="commentVOResultMap">
+        SELECT
+            c.id,
+            c.content,
+            c.parent_id,
+            c.author_id,
+            c.like_count,
+            c.status,
+            c.is_featured,
+            c.created_at,
+            u.nickname AS author_nickname,
+            u.avatar   AS author_avatar
+        FROM comment c
+        JOIN "user" u ON c.author_id = u.id AND u.deleted = 0
+        WHERE c.post_id = #{postId}
+          AND c.parent_id IS NULL
+          AND c.deleted = 0
+          AND c.status = 1
+        ORDER BY c.created_at ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- ============ 批量查询一级回复（联查 author 和 replyToUser） ============ -->
+    <select id="selectRepliesByParentIds" resultMap="commentVOResultMap">
+        SELECT
+            c.id,
+            c.content,
+            c.parent_id,
+            c.author_id,
+            c.reply_to_user_id,
+            c.like_count,
+            c.status,
+            c.is_featured,
+            c.created_at,
+            u.nickname  AS author_nickname,
+            u.avatar    AS author_avatar,
+            ru.nickname AS reply_to_nickname,
+            ru.avatar   AS reply_to_avatar
+        FROM comment c
+        JOIN "user" u ON c.author_id = u.id AND u.deleted = 0
+        LEFT JOIN "user" ru ON c.reply_to_user_id = ru.id AND ru.deleted = 0
+        WHERE c.parent_id IN
+        <foreach collection="parentIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+          AND c.deleted = 0
+          AND c.status = 1
+        ORDER BY c.created_at ASC
+    </select>
+
+    <!-- ============ 查询待审核评论（管理员） ============ -->
+    <select id="selectPendingComments" resultMap="commentVOResultMap">
+        SELECT
+            c.id,
+            c.content,
+            c.parent_id,
+            c.author_id,
+            c.reply_to_user_id,
+            c.like_count,
+            c.status,
+            c.is_featured,
+            c.created_at,
+            u.nickname  AS author_nickname,
+            u.avatar    AS author_avatar,
+            ru.nickname AS reply_to_nickname,
+            ru.avatar   AS reply_to_avatar
+        FROM comment c
+        JOIN "user" u ON c.author_id = u.id AND u.deleted = 0
+        LEFT JOIN "user" ru ON c.reply_to_user_id = ru.id AND ru.deleted = 0
+        WHERE c.status = 0
+          AND c.deleted = 0
+        ORDER BY c.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPendingComments" resultType="long">
+        SELECT COUNT(*)
+        FROM comment
+        WHERE status = 0
+          AND deleted = 0
+    </select>
+
+    <!-- ============ 点赞数增减 ============ -->
+    <update id="updateLikeCount">
+        UPDATE comment
+        SET like_count = GREATEST(like_count + #{delta}, 0)
+        WHERE id = #{commentId} AND deleted = 0
+    </update>
+
+    <select id="selectPublishedFeaturedComment" resultType="com.campus.comment.entity.Comment">
+        SELECT id, content, author_id, post_id, parent_id, reply_to_user_id, like_count, status, is_featured, created_at, deleted
+        FROM comment
+        WHERE id = #{commentId}
+          AND deleted = 0
+          AND status = 1
+          AND is_featured = true
+    </select>
+
+</mapper>
