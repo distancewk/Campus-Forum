@@ -2,9 +2,8 @@
   <div class="register-page">
     <div class="register-card">
       <h2>注册校园论坛</h2>
-      <el-steps :active="step" finish-status="success" class="steps">
+      <el-steps :active="step === 0 ? 0 : 1" finish-status="success" class="steps">
         <el-step title="填写信息" />
-        <el-step title="验证邮箱" />
         <el-step title="完成注册" />
       </el-steps>
 
@@ -22,7 +21,7 @@
           <el-input v-model="form.nickname" placeholder="昵称" :prefix-icon="UserFilled" />
         </el-form-item>
         <el-form-item prop="email">
-          <el-input v-model="form.email" placeholder="邮箱" :prefix-icon="Message" />
+          <el-input v-model="form.email" placeholder="邮箱（选填）" :prefix-icon="Message" />
         </el-form-item>
         <el-form-item prop="password">
           <el-input v-model="form.password" type="password" placeholder="密码" :prefix-icon="Lock" show-password />
@@ -31,45 +30,21 @@
           <el-input v-model="form.confirmPassword" type="password" placeholder="确认密码" :prefix-icon="Lock" show-password />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" class="submit-btn" @click="handleNext" :loading="loading">
-            下一步
+          <el-button type="primary" class="submit-btn" @click="handleSubmit" :loading="loading">
+            注册
           </el-button>
         </el-form-item>
       </el-form>
 
-      <!-- 第二步：邮箱验证 -->
-      <el-form v-if="step === 1" ref="formRef2" :model="form" :rules="rules2">
-        <el-form-item>
-          <p class="verify-tip">验证码已发送至 {{ form.email }}</p>
-        </el-form-item>
-        <el-form-item prop="verifyCode">
-          <el-input v-model="form.verifyCode" placeholder="请输入6位验证码" maxlength="6">
-            <template #append>
-              <el-button
-                :disabled="countdown > 0"
-                @click="handleSendCode"
-              >
-                {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
-              </el-button>
-            </template>
-          </el-input>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" class="submit-btn" @click="handleVerify" :loading="loading">
-            验证
-          </el-button>
-        </el-form-item>
-      </el-form>
-
-      <!-- 第三步：注册成功 -->
-      <div v-if="step === 2" class="success-step">
+      <!-- 第二步：注册成功 -->
+      <div v-if="step === 1" class="success-step">
         <el-icon class="success-icon" color="#67c23a" :size="64"><CircleCheck /></el-icon>
         <h3>注册成功！</h3>
         <p>欢迎加入校园论坛</p>
-        <el-button type="primary" @click="$router.push('/login')">去登录</el-button>
+        <el-button type="primary" @click="$router.push('/')">进入论坛</el-button>
       </div>
 
-      <div class="register-footer" v-if="step < 2">
+      <div class="register-footer" v-if="step === 0">
         已有账号？<router-link to="/login">立即登录</router-link>
       </div>
     </div>
@@ -77,24 +52,22 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { User, UserFilled, Message, Lock, CircleCheck } from '@element-plus/icons-vue'
-import { register, verifyRegister } from '@/api/auth'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 
+const userStore = useUserStore()
 const step = ref(0)
 const formRef1 = ref(null)
-const formRef2 = ref(null)
 const loading = ref(false)
-const countdown = ref(0)
 
 const form = ref({
   studentNo: '',
   nickname: '',
   email: '',
   password: '',
-  confirmPassword: '',
-  verifyCode: ''
+  confirmPassword: ''
 })
 
 const validateConfirmPassword = (rule, value, callback) => {
@@ -112,8 +85,7 @@ const rules1 = {
     { min: 2, max: 20, message: '昵称长度为2-20个字符', trigger: 'blur' }
   ],
   email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -125,13 +97,6 @@ const rules1 = {
   ]
 }
 
-const rules2 = {
-  verifyCode: [
-    { required: true, message: '请输入验证码', trigger: 'blur' },
-    { len: 6, message: '验证码为6位', trigger: 'blur' }
-  ]
-}
-
 const registerPayload = () => ({
   studentNo: form.value.studentNo,
   nickname: form.value.nickname,
@@ -139,74 +104,23 @@ const registerPayload = () => ({
   password: form.value.password
 })
 
-const handleNext = async () => {
+// 邮箱验证暂未启用：一步完成注册并直接落地登录态
+const handleSubmit = async () => {
   const valid = await formRef1.value.validate().catch(() => false)
   if (!valid) return
 
   loading.value = true
   try {
-    await register(registerPayload())
-    ElMessage.success('验证码已发送')
+    await userStore.register(registerPayload())
+    ElMessage.success('注册成功')
     step.value = 1
-    startCountdown()
   } catch (error) {
-    console.error('发送验证码失败:', error)
+    console.error('注册失败:', error)
+    ElMessage.error(error?.response?.data?.message || '注册失败，请稍后重试')
   } finally {
     loading.value = false
   }
 }
-
-const handleSendCode = async () => {
-  try {
-    await register(registerPayload())
-    ElMessage.success('验证码已发送')
-    startCountdown()
-  } catch (error) {
-    console.error('发送验证码失败:', error)
-  }
-}
-
-const handleVerify = async () => {
-  const valid = await formRef2.value.validate().catch(() => false)
-  if (!valid) return
-
-  loading.value = true
-  try {
-    await verifyRegister({
-      studentNo: form.value.studentNo,
-      nickname: form.value.nickname,
-      email: form.value.email,
-      password: form.value.password,
-      code: form.value.verifyCode
-    })
-    step.value = 2
-  } catch (error) {
-    console.error('验证失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-let countdownTimer = null
-
-const startCountdown = () => {
-  if (countdownTimer) clearInterval(countdownTimer)
-  countdown.value = 60
-  countdownTimer = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      clearInterval(countdownTimer)
-      countdownTimer = null
-    }
-  }, 1000)
-}
-
-onUnmounted(() => {
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-})
 </script>
 
 <style lang="scss" scoped>

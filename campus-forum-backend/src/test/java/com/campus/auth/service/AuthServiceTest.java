@@ -1,11 +1,13 @@
 package com.campus.auth.service;
 
+import com.campus.auth.dto.LoginResponse;
 import com.campus.auth.dto.RegisterRequest;
 import com.campus.auth.dto.VerifyCodeRequest;
 import com.campus.auth.entity.User;
 import com.campus.auth.mapper.UserMapper;
 import com.campus.auth.token.OtpStore;
 import com.campus.auth.token.RefreshTokenStore;
+import com.campus.common.exception.BusinessException;
 import com.campus.common.util.EmailUtil;
 import com.campus.common.util.JwtUtil;
 import com.campus.common.util.RedisUtil;
@@ -84,46 +86,62 @@ class AuthServiceTest {
     }
 
     @Test
-    void registerStoresOnlyEncodedPasswordInPendingRegistration() throws Exception {
+    void registerCreatesUserDirectlyWithoutSendingCode() {
         RegisterRequest request = registerRequest();
         when(userMapper.selectByStudentNo(STUDENT_NO)).thenReturn(null);
         when(userMapper.selectByEmail(EMAIL)).thenReturn(null);
         when(passwordEncoder.encode(RAW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
-        when(redisUtil.hasKey(anyString())).thenReturn(false);
-        when(otpStore.canResend(anyString(), anyString())).thenReturn(true);
+        when(refreshTokenStore.issue(any(), anyLong())).thenReturn("jti-test");
+        when(jwtUtil.generateAccessToken(any(), any(), any())).thenReturn("access-token");
+        when(jwtUtil.generateRefreshToken(any(), any(), any())).thenReturn("refresh-token");
 
-        authService.register(request);
+        LoginResponse result = authService.register(request, response);
 
-        ArgumentCaptor<String> pendingJson = ArgumentCaptor.forClass(String.class);
-        verify(redisUtil).set(eq("register:pending:" + EMAIL), pendingJson.capture(), eq(300L));
-
-        JsonNode pending = objectMapper.readTree(pendingJson.getValue());
-        assertThat(pending.get("studentNo").asText()).isEqualTo(STUDENT_NO);
-        assertThat(pending.get("nickname").asText()).isEqualTo(NICKNAME);
-        assertThat(pending.get("email").asText()).isEqualTo(EMAIL);
-        assertThat(pending.get("encodedPassword").asText()).isEqualTo(ENCODED_PASSWORD);
-        assertThat(pending.has("password")).isFalse();
-        assertThat(pendingJson.getValue()).doesNotContain(RAW_PASSWORD);
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).insert(userCaptor.capture());
+        User inserted = userCaptor.getValue();
+        assertThat(inserted.getPassword()).isEqualTo(ENCODED_PASSWORD);
+        assertThat(inserted.getNickname()).isEqualTo(NICKNAME);
+        assertThat(inserted.getEmail()).isEqualTo(EMAIL);
+        assertThat(inserted.getRole()).isEqualTo("STUDENT");
+        assertThat(inserted.getStatus()).isEqualTo(1);
+        assertThat(inserted.getPassword()).doesNotContain(RAW_PASSWORD);
+        // 邮箱验证暂未启用：不再暂存 Redis、不再发送验证码
+        verify(emailUtil, never()).sendVerifyCode(anyString(), anyString());
+        verify(redisUtil, never()).set(anyString(), anyString(), anyLong());
+        // 注册后直接签发令牌
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        assertThat(result.getUser().getStudentNo()).isEqualTo(STUDENT_NO);
     }
 
     @Test
-    void registerCleansPendingStateAndFailsWhenEmailCannotBeSent() {
+    void registerWithEmptyEmailCreatesUserWithNullEmail() {
         RegisterRequest request = registerRequest();
+        request.setEmail("");
         when(userMapper.selectByStudentNo(STUDENT_NO)).thenReturn(null);
-        when(userMapper.selectByEmail(EMAIL)).thenReturn(null);
         when(passwordEncoder.encode(RAW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
-        when(redisUtil.hasKey(anyString())).thenReturn(false);
-        when(otpStore.canResend(anyString(), anyString())).thenReturn(true);
-        org.mockito.Mockito.doThrow(new IllegalStateException("smtp unavailable"))
-                .when(emailUtil).sendVerifyCode(eq(EMAIL), anyString());
+        when(refreshTokenStore.issue(any(), anyLong())).thenReturn("jti-test");
+        when(jwtUtil.generateAccessToken(any(), any(), any())).thenReturn("access-token");
+        when(jwtUtil.generateRefreshToken(any(), any(), any())).thenReturn("refresh-token");
 
-        assertThatThrownBy(() -> authService.register(request))
-                .hasMessageContaining("验证码邮件发送失败");
+        authService.register(request, response);
 
-        // 邮件发送失败后不应上架验证码，仅清理暂存注册态
-        verify(emailUtil).sendVerifyCode(eq(EMAIL), anyString());
-        verify(otpStore, never()).store(anyString(), anyString(), anyString());
-        verify(redisUtil).delete("register:pending:" + EMAIL);
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).insert(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isNull();
+        // 邮箱为空时不查重
+        verify(userMapper, never()).selectByEmail(anyString());
+    }
+
+    @Test
+    void registerRejectsDuplicateStudentNo() {
+        RegisterRequest request = registerRequest();
+        when(userMapper.selectByStudentNo(STUDENT_NO)).thenReturn(new User());
+
+        assertThatThrownBy(() -> authService.register(request, response))
+                .isInstanceOf(BusinessException.class);
+
+        verify(userMapper, never()).insert(any(User.class));
     }
 
     @Test

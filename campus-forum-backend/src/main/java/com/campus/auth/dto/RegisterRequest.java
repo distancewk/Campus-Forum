@@ -17,7 +17,7 @@ public class RegisterRequest {
     @Size(min = 2, max = 20, message = "昵称长度需在2-20个字符之间")
     private String nickname;
 
-    @NotBlank(message = "邮箱不能为空")
+    // 邮箱当前为可选字段：邮箱验证功能暂未启用，仅做格式校验（允许为空）
     @Email(message = "邮箱格式不正确")
     private String email;
 

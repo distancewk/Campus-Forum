@@ -36,9 +36,9 @@ public class AuthController {
      * 注册（暂存信息 + 发送验证码）
      */
     @PostMapping("/register")
-    public R<Void> register(@RequestBody @Valid RegisterRequest request) {
-        authService.register(request);
-        return R.ok();
+    public R<LoginResponse> register(@RequestBody @Valid RegisterRequest request, HttpServletResponse response) {
+        LoginResponse loginResponse = authService.register(request, response);
+        return R.ok(loginResponse);
     }
 
     /**

@@ -99,42 +99,42 @@ public class AuthService {
 
     // ==================== 注册 ====================
 
-    public void register(RegisterRequest request) {
-        validateSchoolEmail(request.getEmail());
-
-        // 检查学号/邮箱是否已注册：统一返回模糊信息，避免账号枚举（V-M）
-        User existByStudentNo = userMapper.selectByStudentNo(request.getStudentNo());
-        if (existByStudentNo != null) {
+    public LoginResponse register(RegisterRequest request, HttpServletResponse response) {
+        // 邮箱验证功能暂未启用：邮箱为可选字段，仅做格式与唯一性校验，不再发送验证码
+        // 学号重复检查：统一返回模糊信息，避免账号枚举（V-M）
+        if (userMapper.selectByStudentNo(request.getStudentNo()) != null) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "操作失败，请稍后重试");
         }
 
-        User existByEmail = userMapper.selectByEmail(request.getEmail());
-        if (existByEmail != null) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "操作失败，请稍后重试");
+        String email = request.getEmail();
+        String normalizedEmail = (email == null || email.isBlank())
+                ? null
+                : email.trim().toLowerCase(Locale.ROOT);
+
+        if (normalizedEmail != null) {
+            if (userMapper.selectByEmail(normalizedEmail) != null) {
+                throw new BusinessException(ResultCode.PARAM_ERROR, "操作失败，请稍后重试");
+            }
         }
 
-        // 暂存注册信息到 Redis。只保存密码哈希，避免验证码窗口期内出现明文密码驻留。
-        String pendingKey = String.format(REGISTER_PENDING_KEY, request.getEmail());
-        try {
-            PendingRegistration pending = new PendingRegistration(
-                    request.getStudentNo(),
-                    request.getNickname(),
-                    request.getEmail(),
-                    passwordEncoder.encode(request.getPassword()));
-            String json = objectMapper.writeValueAsString(pending);
-            redisUtil.set(pendingKey, json, CODE_EXPIRE_SECONDS);
-        } catch (JsonProcessingException e) {
-            log.error("序列化注册信息失败", e);
-            throw new BusinessException(ResultCode.INTERNAL_ERROR);
-        }
+        // 直接创建用户（不再暂存 Redis / 发送验证码）
+        User user = new User();
+        user.setStudentNo(request.getStudentNo());
+        user.setNickname(resolveNickname(request.getNickname(), request.getStudentNo()));
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setEmail(normalizedEmail);
+        user.setRole("STUDENT");
+        user.setStatus(1);
+        user.setLoginFail(0);
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        user.setDeleted(0);
+        userMapper.insert(user);
 
-        // 发送验证码
-        try {
-            sendVerifyCode(request.getEmail(), "REGISTER");
-        } catch (BusinessException e) {
-            redisUtil.delete(pendingKey);
-            throw e;
-        }
+        log.info("用户已注册: userId={}, emailPresent={}", user.getId(), normalizedEmail != null);
+
+        // 生成 Token 并写入 Refresh Cookie（注册后直接登录）
+        return issueLoginResponse(user, response);
     }
 
     public LoginResponse verifyAndComplete(VerifyCodeRequest request, HttpServletResponse response) {
@@ -187,7 +187,14 @@ public class AuthService {
         otpStore.remove("REGISTER", email);
         redisUtil.delete(pendingKey);
 
-        // 生成 Token（携带 tv 以支持会话撤销）
+        // 生成 Token 并写入 Refresh Cookie（复用统一逻辑）
+        return issueLoginResponse(user, response);
+    }
+
+    /**
+     * 创建用户后统一签发访问/刷新令牌并写入 Refresh Cookie。
+     */
+    private LoginResponse issueLoginResponse(User user, HttpServletResponse response) {
         int tv = currentTv(user);
         String accessToken = jwtUtil.generateAccessToken(user.getId(), user.getRole(), tv);
         String jti = refreshTokenStore.issue(user.getId(), refreshTtlSeconds);
@@ -197,6 +204,13 @@ public class AuthService {
         addRefreshTokenCookie(response, refreshToken);
 
         return buildLoginResponse(user, accessToken);
+    }
+
+    private String resolveNickname(String nickname, String studentNo) {
+        if (nickname == null || nickname.isBlank()) {
+            return "用户" + studentNo;
+        }
+        return nickname.trim();
     }
 
     // ==================== 登录 ====================

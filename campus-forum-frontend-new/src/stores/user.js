@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi, refreshToken as refreshApi, getUserInfo, logout as logoutApi } from '@/api/auth'
+import { login as loginApi, register as registerApi, refreshToken as refreshApi, getUserInfo, logout as logoutApi } from '@/api/auth'
 import { getToken, setToken, removeToken, getUser, setUser, removeUser } from '@/utils/auth'
 import { connectWebSocket, disconnectWebSocket } from '@/utils/websocket'
 
@@ -18,6 +18,16 @@ export const useUserStore = defineStore('user', () => {
     setToken(accessToken.value)
     setUser(user.value)
     // 连接 WebSocket
+    connectWebSocket(accessToken.value)
+  }
+
+  // 注册：邮箱验证暂未启用，一步完成并直接落地登录态
+  async function register(payload) {
+    const res = await registerApi(payload)
+    accessToken.value = res.data.accessToken
+    user.value = res.data.user
+    setToken(accessToken.value)
+    setUser(user.value)
     connectWebSocket(accessToken.value)
   }
 
@@ -79,6 +89,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     isAdmin,
     login,
+    register,
     ensureSession,
     refreshAccessToken,
     fetchUserInfo,
