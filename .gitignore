@@ -43,3 +43,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# 旧设计文档：远端已删除，本地保留但不纳入版本控制（绝不上传）
+doc/proposal.md
+doc/detailed-design.md
+doc/high-level-design.md
+doc/prompt.md
+doc/tasks/
+docs/superpowers/

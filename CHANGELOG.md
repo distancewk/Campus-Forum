@@ -7,7 +7,21 @@
 ### 新增
 - 规划中的特性将记录在此处。
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-07-26
+
+### 新增 (Phase 2)
+- 前端渐进引入 TypeScript（api/stores 层类型定义）。
+- Playwright E2E 测试覆盖核心链路（登录→发帖→评论→私信→搜索）。
+- 版本管理规范（Conventional Commits + Semantic Versioning 标签）。
+- 后端 `updated_at` 数据库触发器，自动维护更新时间。
+
+### 修复 / 优化 (Phase 2)
+- 消除 `MessageService.convertToVO` 的 N+1 查询。
+- 统一 DOMPurify 白名单（`utils/sanitize.js`），前端富文本消毒一致。
+- 学校邮箱域名配置化（`CAMPUS_SCHOOL_EMAIL_DOMAIN`）。
+- CORS 收紧：明确允许来源与显式请求头，保留凭据。
+- 引入 ESLint + Prettier，统一前后端代码风格。
+- 同步 `doc/tasks/progress.md` 进度文档。
 
 ### 安全修复（基于 `doc/security-review.md` 对抗性审查）
 - **会话撤销（V-A/V-D/V-E/V-F）**：新增 `user.token_version` 列（V8 迁移）+ Redis 刷新令牌 `jti` 白名单（`RefreshTokenStore`）。登出/改密/封禁立即失效所有旧 token；JWT 过滤器回查 `tokenVersion`、用户状态与角色。
@@ -23,22 +37,6 @@
 
 ### 测试
 - 新增 13 个安全回归测试（会话撤销、OTP 防爆破、默认管理员、审核失败拒绝、待审核帖子不可见、后端消毒、限流、邮箱域名）；全部通过（20/20 安全测试 GREEN）。
-
-## [1.1.0] - Unreleased
-
-### 新增 (Phase 2)
-- 前端渐进引入 TypeScript（api/stores 层类型定义）。
-- Playwright E2E 测试覆盖核心链路（登录→发帖→评论→私信→搜索）。
-- 版本管理规范（Conventional Commits + Semantic Versioning 标签）。
-- 后端 `updated_at` 数据库触发器，自动维护更新时间。
-
-### 修复 / 优化 (Phase 2)
-- 消除 `MessageService.convertToVO` 的 N+1 查询。
-- 统一 DOMPurify 白名单（`utils/sanitize.js`），前端富文本消毒一致。
-- 学校邮箱域名配置化（`CAMPUS_SCHOOL_EMAIL_DOMAIN`）。
-- CORS 收紧：明确允许来源与显式请求头，保留凭据。
-- 引入 ESLint + Prettier，统一前后端代码风格。
-- 同步 `doc/tasks/progress.md` 进度文档。
 
 ## [1.0.0] - 2026-07-26
 
