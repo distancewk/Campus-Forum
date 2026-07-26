@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -96,6 +97,10 @@ class AiQuestionAnswerServiceTest {
             return "根据论坛资料，宿舍报修通常 1-2 天处理。";
         }
 
+        public String createChatCompletion(List<AiChatMessage> messages, Map<String, Object> responseFormat) {
+            return createChatCompletion(messages);
+        }
+
         public AiModerationAdvice moderate(String targetType, String title, String content) {
             return new AiModerationAdvice("LOW", List.of(), 0.1, List.of(), "ALLOW", "fake");
         }
@@ -107,6 +112,10 @@ class AiQuestionAnswerServiceTest {
         }
 
         public String createChatCompletion(List<AiChatMessage> messages) {
+            throw new AiProviderException("chat failed");
+        }
+
+        public String createChatCompletion(List<AiChatMessage> messages, Map<String, Object> responseFormat) {
             throw new AiProviderException("chat failed");
         }
 

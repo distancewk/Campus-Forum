@@ -39,6 +39,8 @@ public class AiProperties {
         private boolean enabled = true;
         private double mediumThreshold = 0.55;
         private double highThreshold = 0.82;
+        // Prompt 缓存 TTL（秒）。>0 时审核请求附带 prompt_cache，复用固定系统提示以省 token/延迟。
+        private int promptCacheTtlSeconds = 0;
     }
 
     @Data

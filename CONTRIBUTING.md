@@ -67,6 +67,7 @@ chore: 升级前端依赖并格式化
 
 ## 5. 其他约定
 
-- 后端改动需保证 `mvn test` 通过；前端需保证 `pnpm lint && pnpm test` 通过。
+- 后端改动需保证 `mvn test` 通过（覆盖率报告由 JaCoCo 生成）；前端需保证 `npm run lint && npm test` 通过。
+- 完整的测试分层、本地运行方式、CI 说明与已知问题见 **[TESTING.md](./TESTING.md)**。
 - 密钥、密码、Token 一律走环境变量（见 `.env.example`），**禁止硬编码进源码或迁移文件**。
 - 文档随代码同步更新（参见 `doc/optimization-plan.md` 与 `doc/tasks/progress.md`）。

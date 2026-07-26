@@ -1,7 +1,6 @@
 package com.campus.post.service;
 
-import com.campus.ai.dto.AiModerationAdvice;
-import com.campus.ai.service.AiModerationService;
+import com.campus.ai.service.AsyncModerationService;
 import com.campus.board.entity.Board;
 import com.campus.board.mapper.BoardMapper;
 import com.campus.common.util.FileUtil;
@@ -23,9 +22,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,13 +39,13 @@ class PostServiceAiModerationTest {
     private FileUtil fileUtil;
 
     @Mock
-    private AiModerationService aiModerationService;
+    private AsyncModerationService asyncModerationService;
 
     private PostService postService;
 
     @BeforeEach
     void setUp() {
-        postService = new PostService(postMapper, boardMapper, fileUtil, aiModerationService);
+        postService = new PostService(postMapper, boardMapper, fileUtil, asyncModerationService);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(100L, null, List.of())
         );
@@ -60,46 +57,20 @@ class PostServiceAiModerationTest {
     }
 
     @Test
-    void createPostPublishesImmediatelyWhenRiskIsLow() {
+    void createPostInsertsPendingAndDispatchesAsyncModeration() {
         stubEnabledBoard();
         stubInsertAssignsId(10L);
-        AiModerationAdvice advice = new AiModerationAdvice("LOW", List.of(), 0.2, List.of(), "ALLOW", "test");
-        when(aiModerationService.review(eq("POST"), eq("打印店在哪里"), anyString(), eq(100L), isNull()))
-                .thenReturn(advice);
 
         PostVO response = postService.createPost(postRequest("打印店在哪里", "<p>校园打印经验</p>"));
 
-        ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
-        verify(postMapper).insert(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(1);
-        assertThat(response.getStatus()).isEqualTo(1);
-        assertThat(response.getPendingReview()).isFalse();
-        verify(aiModerationService).bindTargetAndSave(advice, "POST", 10L, 100L);
-    }
-
-    @Test
-    void createPostRoutesMediumRiskToPendingReview() {
-        stubEnabledBoard();
-        stubInsertAssignsId(11L);
-        AiModerationAdvice advice = new AiModerationAdvice(
-                "MEDIUM",
-                List.of("CONTACT_DIVERSION"),
-                0.7,
-                List.of("引流"),
-                "REVIEW",
-                "test"
-        );
-        when(aiModerationService.review(eq("POST"), eq("资料分享"), anyString(), eq(100L), isNull()))
-                .thenReturn(advice);
-
-        PostVO response = postService.createPost(postRequest("资料分享", "加我微信拿资料"));
-
+        // 帖子先以"待审"(status=0) 落库，不在请求线程内同步等待模型。
         ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
         verify(postMapper).insert(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(0);
         assertThat(response.getStatus()).isEqualTo(0);
         assertThat(response.getPendingReview()).isTrue();
-        verify(aiModerationService).bindTargetAndSave(advice, "POST", 11L, 100L);
+        // 审核被异步派发（决策逻辑在 AsyncModerationServiceTest 中覆盖）。内容含 <p> 不含 <img，故 hasImage=false。
+        verify(asyncModerationService).moderatePost(10L, "打印店在哪里", "<p>校园打印经验</p>", 100L, false);
     }
 
     private void stubEnabledBoard() {

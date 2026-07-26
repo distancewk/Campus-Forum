@@ -5,6 +5,7 @@ import com.campus.ai.dto.AdminModerationQuery;
 import com.campus.ai.dto.AdminModerationVO;
 import com.campus.ai.service.AdminKnowledgeService;
 import com.campus.ai.service.AiModerationService;
+import com.campus.ai.service.ModerationMetrics;
 import com.campus.common.response.PageQuery;
 import com.campus.common.response.PageResult;
 import com.campus.common.response.R;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/admin/ai")
 @RequiredArgsConstructor
@@ -28,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class AdminAiController {
     private final AdminKnowledgeService adminKnowledgeService;
     private final AiModerationService aiModerationService;
+    private final ModerationMetrics moderationMetrics;
 
     @PostMapping("/documents")
     public R<AdminAiDocumentVO> uploadDocument(@RequestPart("file") MultipartFile file,
@@ -55,5 +59,10 @@ public class AdminAiController {
     @GetMapping("/moderation")
     public R<PageResult<AdminModerationVO>> listModeration(@Valid AdminModerationQuery query) {
         return R.ok(aiModerationService.listForAdmin(query));
+    }
+
+    @GetMapping("/moderation-metrics")
+    public R<Map<String, Object>> moderationMetrics() {
+        return R.ok(moderationMetrics.snapshot());
     }
 }

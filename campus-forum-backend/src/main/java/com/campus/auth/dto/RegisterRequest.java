@@ -10,7 +10,7 @@ import lombok.Data;
 public class RegisterRequest {
 
     @NotBlank(message = "学号不能为空")
-    @Pattern(regexp = "^\\d{8,12}$", message = "学号格式不正确")
+    @Pattern(regexp = "^\\d{8,20}$", message = "学号格式不正确")
     private String studentNo;
 
     @NotBlank(message = "昵称不能为空")

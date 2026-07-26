@@ -79,7 +79,10 @@ const validateConfirmPassword = (rule, value, callback) => {
 }
 
 const rules1 = {
-  studentNo: [{ required: true, message: '请输入学号', trigger: 'blur' }],
+  studentNo: [
+    { required: true, message: '请输入学号', trigger: 'blur' },
+    { pattern: /^\d{8,20}$/, message: '学号格式不正确', trigger: 'blur' }
+  ],
   nickname: [
     { required: true, message: '请输入昵称', trigger: 'blur' },
     { min: 2, max: 20, message: '昵称长度为2-20个字符', trigger: 'blur' }

@@ -17,9 +17,14 @@ logs/
 **/logs/
 uploads/
 **/uploads/
+.runtime-logs/
 .run-logs/
 .playwright-cli/
 output/
+
+# vite ephemeral build artifacts
+vite.config.js.*.mjs
+*.timestamp-*.mjs
 
 # local configuration
 .env

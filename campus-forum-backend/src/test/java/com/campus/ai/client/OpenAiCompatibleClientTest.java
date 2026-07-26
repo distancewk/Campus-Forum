@@ -159,7 +159,10 @@ class OpenAiCompatibleClientTest {
 
         assertThat(advice.getSuggestedAction()).isEqualTo("ALLOW");
         assertThat(advice.getModelName()).isEqualTo("chat-model");
-        JsonNode messages = objectMapper.readTree(recordedRequest.get().body()).path("messages");
+        JsonNode fullBody = objectMapper.readTree(recordedRequest.get().body());
+        // 审核请求应强制 JSON 输出模式，避免模型返回 Markdown 包裹导致解析失败误拒。
+        assertThat(fullBody.path("response_format").path("type").asText()).isEqualTo("json_object");
+        JsonNode messages = fullBody.path("messages");
         assertThat(messages).hasSize(2);
         assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
         assertThat(messages.get(1).path("role").asText()).isEqualTo("user");

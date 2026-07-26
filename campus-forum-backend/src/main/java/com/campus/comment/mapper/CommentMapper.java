@@ -6,6 +6,7 @@ import com.campus.comment.entity.Comment;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -46,6 +47,12 @@ public interface CommentMapper extends BaseMapper<Comment> {
      * 点赞数增减（原子操作）
      */
     int updateLikeCount(@Param("commentId") Long commentId, @Param("delta") int delta);
+
+    /**
+     * 异步审核完成后翻评论状态（status=1 可见 / 0 待审）。用自定义 SQL 避免 LambdaUpdateWrapper 在脱离 Spring 上下文时的 lambda 缓存问题。
+     */
+    @Update("UPDATE comment SET status = #{status} WHERE id = #{id} AND deleted = 0")
+    int updateStatusById(@Param("id") Long id, @Param("status") int status);
 
     /**
      * 查询已发布精华评论

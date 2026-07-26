@@ -2,8 +2,7 @@ package com.campus.post.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.campus.ai.dto.AiModerationAdvice;
-import com.campus.ai.service.AiModerationService;
+import com.campus.ai.service.AsyncModerationService;
 import com.campus.board.entity.Board;
 import com.campus.board.mapper.BoardMapper;
 import com.campus.common.enums.ResultCode;
@@ -18,6 +17,8 @@ import com.campus.common.util.HtmlSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
@@ -32,7 +33,7 @@ public class PostService {
     private final PostMapper postMapper;
     private final BoardMapper boardMapper;
     private final FileUtil fileUtil;
-    private final AiModerationService aiModerationService;
+    private final AsyncModerationService asyncModerationService;
 
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]*>");
 
@@ -115,14 +116,14 @@ public class PostService {
         post.setHotScore(0.0);
         post.setIsPinned(false);
         post.setIsFeatured(false);
-        AiModerationAdvice advice = aiModerationService.review("POST", post.getTitle(), sanitizedContent, currentUserId, null);
-        boolean pendingReview = advice == null || !"LOW".equalsIgnoreCase(advice.getRiskLevel());
-        post.setStatus(pendingReview ? 0 : 1);
+        // 先以"待审"落库，AI 审核异步进行（事务提交后触发），通过后再翻为可见。
+        post.setStatus(0);
         post.setCreatedAt(LocalDateTime.now());
         post.setUpdatedAt(LocalDateTime.now());
         post.setDeleted(0);
         postMapper.insert(post);
-        aiModerationService.bindTargetAndSave(advice, "POST", post.getId(), currentUserId);
+        boolean hasImage = sanitizedContent != null && sanitizedContent.contains("<img");
+        dispatchPostModeration(post.getId(), post.getTitle(), sanitizedContent, currentUserId, hasImage);
 
         // 构建返回值，避免调用 getPostDetail（会导致 viewCount 从 1 开始）
         PostVO vo = new PostVO();
@@ -137,9 +138,31 @@ public class PostService {
         vo.setIsFavorited(false);
         vo.setIsOwner(true);
         vo.setStatus(post.getStatus());
-        vo.setPendingReview(pendingReview);
+        vo.setPendingReview(true);
         vo.setCreatedAt(post.getCreatedAt());
         return vo;
+    }
+
+    /**
+     * 事务提交后再触发异步 AI 审核，避免异步线程在帖子尚未提交时就读不到记录。
+     * 若无活跃事务（理论不应发生），则直接触发。
+     */
+    private void dispatchPostModeration(Long postId, String title, String content, Long authorId, boolean hasImage) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            Long id = postId;
+            String t = title;
+            String c = content;
+            Long uid = authorId;
+            boolean img = hasImage;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncModerationService.moderatePost(id, t, c, uid, img);
+                }
+            });
+        } else {
+            asyncModerationService.moderatePost(postId, title, content, authorId, hasImage);
+        }
     }
 
     /**
@@ -157,14 +180,31 @@ public class PostService {
             throw new BusinessException(ResultCode.FORBIDDEN, "只能编辑自己的帖子");
         }
 
+        boolean changed = false;
         if (request.getTitle() != null) {
-            post.setTitle(HtmlSanitizer.cleanPlain(request.getTitle()));
+            String newTitle = HtmlSanitizer.cleanPlain(request.getTitle());
+            if (!newTitle.equals(post.getTitle())) {
+                post.setTitle(newTitle);
+                changed = true;
+            }
         }
         if (request.getContent() != null) {
-            post.setContent(HtmlSanitizer.cleanBasic(request.getContent()));
+            String newContent = HtmlSanitizer.cleanBasic(request.getContent());
+            if (!newContent.equals(post.getContent())) {
+                post.setContent(newContent);
+                changed = true;
+            }
         }
         post.setUpdatedAt(LocalDateTime.now());
-        postMapper.updateById(post);
+        if (changed) {
+            // 标题或正文变更：重新进入待审，由异步 AI 审核复核，防止"先合规过审再改成违规"。
+            post.setStatus(0);
+            postMapper.updateById(post);
+            boolean hasImage = post.getContent() != null && post.getContent().contains("<img");
+            dispatchPostModeration(post.getId(), post.getTitle(), post.getContent(), currentUserId, hasImage);
+        } else {
+            postMapper.updateById(post);
+        }
     }
 
     /**

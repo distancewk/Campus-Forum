@@ -20,11 +20,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class OpenAiCompatibleClient implements AiProviderClient {
     private static final int RESPONSE_BODY_SNIPPET_LIMIT = 500;
+    // 瞬时错误重试：最多重试次数（不含首次，即最多 1+MAX_RETRIES 次请求）。
+    private static final int MAX_RETRIES = 2;
+    // 重试退避基数（毫秒），第 n 次重试等待 base * n。
+    private static final long RETRY_BACKOFF_BASE_MS = 600;
+    private static final Pattern CODE_FENCE_PATTERN =
+            Pattern.compile("^```[a-zA-Z]*\\s*([\\s\\S]*?)```$", Pattern.DOTALL);
     // 不可伪造的用户内容分隔符，用于向模型明确"用户内容仅是数据"的边界，抵御提示注入。
     private static final String USER_CONTENT_DELIMITER_START = "<<<CAMPUS_USER_CONTENT_START>>>";
     private static final String USER_CONTENT_DELIMITER_END = "<<<CAMPUS_USER_CONTENT_END>>>";
@@ -67,6 +75,17 @@ public class OpenAiCompatibleClient implements AiProviderClient {
 
     @Override
     public String createChatCompletion(List<AiChatMessage> messages) {
+        return createChatCompletion(messages, null);
+    }
+
+    @Override
+    public String createChatCompletion(List<AiChatMessage> messages, Map<String, Object> responseFormat) {
+        return chatCompletionContent(messages, responseFormat, null);
+    }
+
+    private String chatCompletionContent(List<AiChatMessage> messages,
+                                          Map<String, Object> responseFormat,
+                                          Map<String, Object> extra) {
         ensureEnabled();
         ensureApiKey();
 
@@ -74,6 +93,14 @@ public class OpenAiCompatibleClient implements AiProviderClient {
             Map<String, Object> request = new LinkedHashMap<>();
             request.put("model", properties.getChatModel());
             request.put("messages", messages);
+            // 强制模型以严格 JSON 返回（需提供方支持，如阿里云百炼兼容模式）。
+            if (responseFormat != null) {
+                request.put("response_format", responseFormat);
+            }
+            // 额外的模型级参数（如 prompt_cache），不修改公开接口签名。
+            if (extra != null && !extra.isEmpty()) {
+                request.putAll(extra);
+            }
             JsonNode root = readProviderJson(post("/chat/completions", request));
             return extractChatContent(root);
         } catch (AiProviderException e) {
@@ -118,12 +145,26 @@ public class OpenAiCompatibleClient implements AiProviderClient {
                 %s
                 """.formatted(USER_CONTENT_DELIMITER_START, targetType, title, content, USER_CONTENT_DELIMITER_END);
 
-        String response = createChatCompletion(List.of(
+        Map<String, Object> jsonFormat = new LinkedHashMap<>();
+        jsonFormat.put("type", "json_object");
+
+        // Prompt 缓存：复用固定的系统提示前缀，显著降低重复审核的 token 消耗与延迟。
+        // 仅当 campus.ai.moderation.prompt-cache-ttl-seconds > 0 时启用（提供方忽略未知字段亦无害）。
+        Map<String, Object> extra = new LinkedHashMap<>();
+        int promptCacheTtl = properties.getModeration().getPromptCacheTtlSeconds();
+        if (promptCacheTtl > 0) {
+            Map<String, Object> promptCache = new LinkedHashMap<>();
+            promptCache.put("cache_ttl", promptCacheTtl);
+            extra.put("prompt_cache", promptCache);
+        }
+        String response = chatCompletionContent(List.of(
                 new AiChatMessage("system", systemPrompt),
                 new AiChatMessage("user", userPrompt)
-        ));
+        ), jsonFormat, extra.isEmpty() ? null : extra);
         try {
-            AiModerationAdvice advice = objectMapper.readValue(response, AiModerationAdvice.class);
+            // 容错：即便开启 json_object，仍兜底剥离可能的 ```json 代码围栏。
+            String cleaned = stripCodeFences(response);
+            AiModerationAdvice advice = objectMapper.readValue(cleaned, AiModerationAdvice.class);
             validateModerationAdvice(advice);
             advice.setModelName(properties.getChatModel());
             return advice;
@@ -132,23 +173,74 @@ public class OpenAiCompatibleClient implements AiProviderClient {
         }
     }
 
+    /**
+     * 剥离模型偶尔包裹的 Markdown 代码围栏（```json ... ``` 或 ``` ... ```），
+     * 作为 response_format=json_object 的兜底，避免解析失败导致正常内容被误拒。
+     */
+    private String stripCodeFences(String text) {
+        if (text == null) {
+            return text;
+        }
+        String trimmed = text.trim();
+        Matcher matcher = CODE_FENCE_PATTERN.matcher(trimmed);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        return trimmed;
+    }
+
     private String post(String path, Object body) throws IOException, InterruptedException {
         String requestBody = objectMapper.writeValueAsString(body);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(normalizeBaseUrl() + path))
-                .timeout(Duration.ofMillis(properties.getTimeoutMs()))
-                .header("Authorization", "Bearer " + properties.getApiKey().trim())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
+        int attempt = 0;
+        Exception lastException = null;
+        while (attempt <= MAX_RETRIES) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(normalizeBaseUrl() + path))
+                        .timeout(Duration.ofMillis(properties.getTimeoutMs()))
+                        .header("Authorization", "Bearer " + properties.getApiKey().trim())
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
 
-        HttpResponse<String> response = HttpClient.newHttpClient()
-                .send(request, HttpResponse.BodyHandlers.ofString());
-        int statusCode = response.statusCode();
-        if (statusCode < 200 || statusCode >= 300) {
-            throw new AiProviderException("AI 服务返回错误状态：" + statusCode + "，响应：" + truncate(response.body()));
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+                int statusCode = response.statusCode();
+                if (statusCode >= 200 && statusCode < 300) {
+                    return response.body();
+                }
+                // 429（限流）与 5xx（服务端临时故障）可重试；其余 4xx 视为不可重试，直接抛出。
+                if (statusCode == 429 || statusCode >= 500) {
+                    lastException = new AiProviderException(
+                            "AI 服务返回错误状态：" + statusCode + "，响应：" + truncate(response.body()));
+                } else {
+                    throw new AiProviderException(
+                            "AI 服务返回错误状态：" + statusCode + "，响应：" + truncate(response.body()));
+                }
+            } catch (IOException | InterruptedException e) {
+                // 网络抖动 / 超时等瞬时错误：记录后重试。
+                lastException = e;
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            attempt++;
+            if (attempt <= MAX_RETRIES) {
+                try {
+                    Thread.sleep(RETRY_BACKOFF_BASE_MS * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new AiProviderException("AI 服务请求被中断", ie);
+                }
+            }
         }
-        return response.body();
+        if (lastException instanceof AiProviderException) {
+            throw (AiProviderException) lastException;
+        }
+        if (lastException instanceof InterruptedException) {
+            throw new AiProviderException("AI 服务请求被中断", lastException);
+        }
+        throw new AiProviderException("AI 服务请求失败", lastException);
     }
 
     private JsonNode readProviderJson(String responseBody) {

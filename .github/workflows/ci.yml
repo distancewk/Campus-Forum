@@ -1,61 +1,90 @@
 name: CI
 
+# 触发：所有分支推送 + PR。受保护分支（main）只能通过 PR 合入。
 on:
   push:
   pull_request:
 
+# 同一分支的重复运行自动取消，节省 CI 资源。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 最小权限原则：仅读取内容。
+permissions:
+  contents: read
+
 jobs:
   backend:
+    name: Backend (test + coverage)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: campus_forum
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: campus-forum-backend
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - name: Run backend tests
-        working-directory: campus-forum-backend
-        run: mvn -q test
-        env:
-          DB_PASSWORD: testpass
+
+      # 后端测试完全 hermetic（Mockito + @WebMvcTest），不依赖外部 Postgres/Redis。
+      # 如需运行依赖真实数据库的集成测试，见 TESTING.md。
+      - name: Run tests & generate JaCoCo coverage
+        run: mvn -B test
+
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco
+          path: campus-forum-backend/target/site/jacoco
+          if-no-files-found: ignore
 
   frontend:
+    name: Frontend (lint, typecheck, test, build)
     runs-on: ubuntu-latest
-    # Package manager detected from repo: package-lock.json present -> npm
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: campus-forum-frontend-new
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
+          # 注意：当前 package-lock.json 与 package.json 不完全同步，使用 npm install（非 npm ci）。
           cache-dependency-path: campus-forum-frontend-new/package-lock.json
+
       - name: Install dependencies
-        run: npm -C campus-forum-frontend-new install
-      # NOTE: no `lint` script exists in package.json; skipped to avoid CI failure.
-      - name: Run frontend tests
-        run: npm -C campus-forum-frontend-new test
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      # 已知问题：typescript 与 vue-tsc 版本不匹配导致 typecheck 报错，
+      # 待依赖对齐后移除 continue-on-error。详见 TESTING.md。
+      - name: Typecheck
+        continue-on-error: true
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: campus-forum-frontend-new/dist
+          if-no-files-found: ignore

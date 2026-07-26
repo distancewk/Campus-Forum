@@ -12,6 +12,7 @@ import com.campus.search.dto.SearchQuery;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -59,6 +60,12 @@ public interface PostMapper extends BaseMapper<Post> {
      * 评论数增减
      */
     int updateCommentCount(@Param("postId") Long postId, @Param("delta") int delta);
+
+    /**
+     * 异步审核完成后翻贴状态（status=1 可见 / 0 待审）。用自定义 SQL 避免 LambdaUpdateWrapper 在脱离 Spring 上下文时的 lambda 缓存问题。
+     */
+    @Update("UPDATE post SET status = #{status} WHERE id = #{id} AND deleted = 0")
+    int updateStatusById(@Param("id") Long id, @Param("status") int status);
 
     /**
      * 收藏数增减

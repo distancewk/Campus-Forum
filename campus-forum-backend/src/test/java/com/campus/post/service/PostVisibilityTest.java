@@ -1,6 +1,6 @@
 package com.campus.post.service;
 
-import com.campus.ai.service.AiModerationService;
+import com.campus.ai.service.AsyncModerationService;
 import com.campus.board.mapper.BoardMapper;
 import com.campus.common.exception.BusinessException;
 import com.campus.common.util.FileUtil;
@@ -44,13 +44,13 @@ class PostVisibilityTest {
     @Mock
     private FileUtil fileUtil;
     @Mock
-    private AiModerationService aiModerationService;
+    private AsyncModerationService asyncModerationService;
 
     private PostService postService;
 
     @BeforeEach
     void setUp() {
-        postService = new PostService(postMapper, boardMapper, fileUtil, aiModerationService);
+        postService = new PostService(postMapper, boardMapper, fileUtil, asyncModerationService);
         // Authenticated as non-author, non-admin viewer (id=999)
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(999L, null, List.of()));

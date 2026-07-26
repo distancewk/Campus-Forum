@@ -1,7 +1,6 @@
 package com.campus.comment.service;
 
-import com.campus.ai.dto.AiModerationAdvice;
-import com.campus.ai.service.AiModerationService;
+import com.campus.ai.service.AsyncModerationService;
 import com.campus.comment.dto.CommentCreateRequest;
 import com.campus.comment.dto.CommentVO;
 import com.campus.comment.entity.Comment;
@@ -17,6 +16,8 @@ import com.campus.user.dto.AuthorVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Safelist;
 
@@ -31,7 +32,7 @@ public class CommentService {
     private final CommentMapper commentMapper;
     private final PostMapper postMapper;
     private final LikeMapper likeMapper;
-    private final AiModerationService aiModerationService;
+    private final AsyncModerationService asyncModerationService;
 
     /**
      * 获取评论列表（树形结构）
@@ -133,23 +134,38 @@ public class CommentService {
         comment.setParentId(request.getParentId());
         comment.setReplyToUserId(request.getReplyToUserId());
         comment.setLikeCount(0);
-        AiModerationAdvice advice = aiModerationService.review("COMMENT", null, safeContent, currentUserId, null);
-        boolean pendingReview = advice == null || !"LOW".equalsIgnoreCase(advice.getRiskLevel());
-        comment.setStatus(pendingReview ? 0 : 1);
+        // 先以"待审"落库，AI 审核异步进行（事务提交后触发），通过后再翻为可见并计入评论数。
+        comment.setStatus(0);
         comment.setCreatedAt(LocalDateTime.now());
         comment.setDeleted(0);
         commentMapper.insert(comment);
-        aiModerationService.bindTargetAndSave(advice, "COMMENT", comment.getId(), currentUserId);
-
-        // 5. 帖子评论数 +1
-        if (!pendingReview) {
-            postMapper.updateCommentCount(postId, 1);
-        }
+        dispatchCommentModeration(comment.getId(), postId, safeContent, currentUserId);
 
         // 6. 返回 CommentVO
         CommentVO vo = buildCommentVO(comment, currentUserId);
-        vo.setPendingReview(pendingReview);
+        vo.setPendingReview(true);
         return vo;
+    }
+
+    /**
+     * 事务提交后再触发异步 AI 审核，避免异步线程在评论尚未提交时就读不到记录。
+     * 若无活跃事务（理论不应发生），则直接触发。
+     */
+    private void dispatchCommentModeration(Long commentId, Long postId, String content, Long authorId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            Long cid = commentId;
+            Long pid = postId;
+            String c = content;
+            Long uid = authorId;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncModerationService.moderateComment(cid, pid, c, uid);
+                }
+            });
+        } else {
+            asyncModerationService.moderateComment(commentId, postId, content, authorId);
+        }
     }
 
     /**

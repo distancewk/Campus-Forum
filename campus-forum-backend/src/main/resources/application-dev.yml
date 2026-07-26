@@ -45,6 +45,16 @@ campus:
   cors:
     allowed-origins: http://localhost:5173,http://localhost:8080
   school-email-domain: "@your-school.edu.cn"
+  ai:
+    enabled: true                 # 本地 dev 启用真实 AI 审核（接入阿里云百炼）
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    chat-model: qwen-plus
+    moderation-enabled: true      # 恢复 AI 审核（api-key 通过 .env 的 CAMPUS_AI_API_KEY 注入）
+    moderation:
+      prompt-cache-ttl-seconds: 3600   # 复用固定系统提示前缀，省 token/延迟
+      cache-ttl-seconds: 600           # 相同内容 10 分钟内复用审核结果
+      rate-limit-per-user: 30          # 单用户每分钟审核上限
+      rate-limit-global: 300           # 全局每分钟审核上限（成本封顶近似）
   admin:
     student-no: ${CAMPUS_ADMIN_STUDENT_NO:admin001}
     email: ${CAMPUS_ADMIN_EMAIL:}
