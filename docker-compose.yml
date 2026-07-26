@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16
+    # 必须带 pgvector 扩展，否则 Flyway V4 的 CREATE EXTENSION vector 会失败
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: campus_forum
