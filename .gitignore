@@ -26,6 +26,7 @@ output/
 .env.*
 !.env.example
 .claude/
+.workbuddy/
 test-access.txt
 
 # inactive local workspaces

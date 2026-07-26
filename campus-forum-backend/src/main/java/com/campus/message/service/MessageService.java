@@ -55,6 +55,16 @@ public class MessageService {
 
         messageMapper.insert(message);
 
+        // 预填收发件人展示字段，避免 convertToVO 再次查询数据库
+        User sender = userMapper.selectById(senderId);
+        if (sender != null) {
+            message.setSenderNickname(sender.getNickname());
+            message.setSenderAvatar(sender.getAvatar());
+        }
+        if (receiver != null) {
+            message.setReceiverNickname(receiver.getNickname());
+        }
+
         // 返回 VO
         return convertToVO(message);
     }
@@ -72,7 +82,8 @@ public class MessageService {
     public PageResult<MessageVO> getChatHistory(Long userId, Long otherUserId, int page, int size) {
         int offset = (page - 1) * size;
 
-        List<MessageVO> records = messageMapper.selectChatHistory(userId, otherUserId, offset, size);
+        List<Message> messages = messageMapper.selectChatHistory(userId, otherUserId, offset, size);
+        List<MessageVO> records = messages.stream().map(this::convertToVO).toList();
         long total = messageMapper.countChatHistory(userId, otherUserId);
 
         return new PageResult<>(records, total, page, size);
@@ -94,7 +105,8 @@ public class MessageService {
     }
 
     /**
-     * 转换为 VO
+     * 转换为 VO。收发件人展示字段（senderNickname/senderAvatar/receiverNickname）已由
+     * selectChatHistory 联表查询回填，或 saveMessage 预填，无需再次查询数据库。
      */
     private MessageVO convertToVO(Message message) {
         MessageVO vo = new MessageVO();
@@ -105,18 +117,9 @@ public class MessageService {
         vo.setIsRead(message.getIsRead());
         vo.setCreatedAt(message.getCreatedAt());
 
-        // 查询发送者信息
-        User sender = userMapper.selectById(message.getSenderId());
-        if (sender != null) {
-            vo.setSenderNickname(sender.getNickname());
-            vo.setSenderAvatar(sender.getAvatar());
-        }
-
-        // 查询接收者信息
-        User receiver = userMapper.selectById(message.getReceiverId());
-        if (receiver != null) {
-            vo.setReceiverNickname(receiver.getNickname());
-        }
+        vo.setSenderNickname(message.getSenderNickname());
+        vo.setSenderAvatar(message.getSenderAvatar());
+        vo.setReceiverNickname(message.getReceiverNickname());
 
         return vo;
     }

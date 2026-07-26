@@ -1,7 +1,6 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client/dist/sockjs'
 import { useMessageStore } from '@/stores/message'
-import { getUser } from '@/utils/auth'
 
 let stompClient = null
 let currentToken = ''
@@ -37,16 +36,9 @@ export function connectWebSocket(token, onMessage) {
           if (onMessage) {
             onMessage(body)
           }
-          // 支持 window 级别消息回调（用于 Message 页面）
-          if (typeof window.__messageCallback === 'function') {
-            window.__messageCallback(body)
-          }
-          // 更新未读消息数
-          const currentUser = getUser()
-          if (body.receiverId === currentUser?.id) {
-            const messageStore = useMessageStore()
-            messageStore.incrementUnread()
-          }
+          // 推送到 Pinia store（更新未读消息数并暴露给 Message 页面）
+          const messageStore = useMessageStore()
+          messageStore.pushMessage(body)
         } catch (e) {
           console.error('解析 WebSocket 消息失败:', e)
         }

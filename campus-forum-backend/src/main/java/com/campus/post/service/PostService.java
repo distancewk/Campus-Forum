@@ -14,9 +14,8 @@ import com.campus.common.util.SecurityUtil;
 import com.campus.post.dto.*;
 import com.campus.post.entity.Post;
 import com.campus.post.mapper.PostMapper;
+import com.campus.common.util.HtmlSanitizer;
 import lombok.RequiredArgsConstructor;
-import org.jsoup.Jsoup;
-import org.jsoup.safety.Safelist;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -58,6 +57,17 @@ public class PostService {
             throw new BusinessException(ResultCode.NOT_FOUND, "帖子不存在");
         }
 
+        // 可见性控制：未发布（待审核/已拒绝）的帖子仅作者本人与管理员可见，其余一律视为不存在。
+        if (vo.getStatus() != null && vo.getStatus() != 1) {
+            Long currentUserId = SecurityUtil.getCurrentUserId();
+            boolean isAuthor = currentUserId != null
+                    && vo.getAuthor() != null
+                    && currentUserId.equals(vo.getAuthor().getId());
+            if (!isAuthor && !SecurityUtil.isAdmin()) {
+                throw new BusinessException(ResultCode.NOT_FOUND, "帖子不存在");
+            }
+        }
+
         // 浏览量 +1（原子操作）
         postMapper.incrementViewCount(postId);
 
@@ -88,13 +98,13 @@ public class PostService {
             throw new BusinessException(ResultCode.NOT_FOUND, "板块不存在或已禁用");
         }
 
-        // XSS 过滤
-        String sanitizedContent = sanitizeHtml(request.getContent());
+        // 后端 HTML 清洗（信任边界）：标题剥离所有标签，正文仅保留安全富文本标签。
+        String sanitizedContent = HtmlSanitizer.cleanBasic(request.getContent());
 
         Long currentUserId = SecurityUtil.requireCurrentUserId();
 
         Post post = new Post();
-        post.setTitle(request.getTitle() != null ? request.getTitle().trim() : "");
+        post.setTitle(HtmlSanitizer.cleanPlain(request.getTitle()));
         post.setContent(sanitizedContent);
         post.setAuthorId(currentUserId);
         post.setBoardId(request.getBoardId());
@@ -148,10 +158,10 @@ public class PostService {
         }
 
         if (request.getTitle() != null) {
-            post.setTitle(request.getTitle().trim());
+            post.setTitle(HtmlSanitizer.cleanPlain(request.getTitle()));
         }
         if (request.getContent() != null) {
-            post.setContent(sanitizeHtml(request.getContent()));
+            post.setContent(HtmlSanitizer.cleanBasic(request.getContent()));
         }
         post.setUpdatedAt(LocalDateTime.now());
         postMapper.updateById(post);
@@ -187,19 +197,6 @@ public class PostService {
         Map<String, String> result = new HashMap<>();
         result.put("url", url);
         return result;
-    }
-
-    /**
-     * XSS 过滤：使用 Jsoup.clean()，允许 img 标签
-     */
-    private String sanitizeHtml(String html) {
-        if (html == null) {
-            return null;
-        }
-        return Jsoup.clean(html, Safelist.relaxed()
-                .addTags("img")
-                .addAttributes("img", "src", "alt", "width", "height")
-                .addProtocols("img", "src", "http", "https"));
     }
 
     /**

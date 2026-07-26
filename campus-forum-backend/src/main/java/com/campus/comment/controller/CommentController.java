@@ -3,6 +3,7 @@ package com.campus.comment.controller;
 import com.campus.comment.dto.CommentCreateRequest;
 import com.campus.comment.dto.CommentVO;
 import com.campus.comment.service.CommentService;
+import com.campus.common.ratelimit.RateLimit;
 import com.campus.common.response.PageQuery;
 import com.campus.common.response.PageResult;
 import com.campus.common.response.R;
@@ -30,6 +31,7 @@ public class CommentController {
      * 发表评论（需认证）
      */
     @PostMapping
+    @RateLimit(scope = "user", limit = 20, window = 60)
     public R<CommentVO> createComment(@PathVariable Long postId,
                                        @RequestBody @Valid CommentCreateRequest request) {
         return R.ok(commentService.createComment(postId, request));

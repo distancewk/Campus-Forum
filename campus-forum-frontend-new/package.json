@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .js,.vue",
+    "format": "prettier --write \"src/**/*.{js,vue}\" \"*.{json,md}\"",
+    "typecheck": "vue-tsc --noEmit",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -22,6 +28,17 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",
-    "vite": "^8.0.14"
+    "@vue/eslint-config-prettier": "^9.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "@playwright/test": "^1.47.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-vue": "^9.27.0",
+    "jsdom": "^25.0.0",
+    "playwright": "^1.47.0",
+    "prettier": "^3.3.0",
+    "vite": "^8.0.14",
+    "vitest": "^2.1.0",
+    "vue-tsc": "^2.0.0"
   }
 }

@@ -4,6 +4,7 @@ import { getUnreadCount } from '@/api/message'
 
 export const useMessageStore = defineStore('message', () => {
   const unreadCount = ref(0)
+  const latest = ref(null)
 
   async function fetchUnreadCount() {
     try {
@@ -18,14 +19,21 @@ export const useMessageStore = defineStore('message', () => {
     unreadCount.value++
   }
 
+  function pushMessage(msg) {
+    latest.value = msg
+    unreadCount.value++
+  }
+
   function clearUnread() {
     unreadCount.value = 0
   }
 
   return {
     unreadCount,
+    latest,
     fetchUnreadCount,
     incrementUnread,
+    pushMessage,
     clearUnread
   }
 })

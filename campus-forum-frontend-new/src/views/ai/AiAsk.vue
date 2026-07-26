@@ -120,6 +120,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -236,15 +237,6 @@ const sourceLabel = (sourceType) => {
   return labels[sourceType] || sourceType || '来源'
 }
 
-const formatTime = (time) => {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 onMounted(() => {
   loadSessions()

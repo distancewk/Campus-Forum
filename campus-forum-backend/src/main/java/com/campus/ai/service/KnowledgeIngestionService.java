@@ -11,6 +11,8 @@ import com.campus.post.dto.PostVO;
 import com.campus.post.mapper.PostMapper;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,6 +29,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class KnowledgeIngestionService {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeIngestionService.class);
     private static final int CHUNK_MAX_CHARS = 1000;
     private static final int CHUNK_OVERLAP_CHARS = 150;
     private static final String STATUS_INDEXING = "INDEXING";
@@ -151,17 +154,25 @@ public class KnowledgeIngestionService {
         LocalDateTime now = LocalDateTime.now();
         for (int i = 0; i < chunks.size(); i++) {
             String content = chunks.get(i);
-            List<Double> embedding = aiProviderClient.createEmbedding(content);
+            // 入库前清洗：剥离 Markdown 代码围栏等易用于注入的格式。
+            String sanitized = stripInjectionMarkers(content);
+            // 疑似提示注入的片段：记录告警并跳过，避免污染检索语料。
+            if (isPotentialPromptInjection(sanitized)) {
+                log.warn("跳过疑似提示注入的检索片段 documentId={} chunkIndex={} snippet={}",
+                        document.getId(), i, truncate(sanitized, 120));
+                continue;
+            }
+            List<Double> embedding = aiProviderClient.createEmbedding(sanitized);
             AiKnowledgeChunk chunk = new AiKnowledgeChunk();
             chunk.setDocumentId(document.getId());
             chunk.setSourceType(document.getSourceType());
             chunk.setSourceId(document.getSourceId());
             chunk.setChunkIndex(i);
             chunk.setTitle(document.getTitle());
-            chunk.setContent(content);
-            chunk.setContentHash(sha256(content));
+            chunk.setContent(sanitized);
+            chunk.setContentHash(sha256(sanitized));
             chunk.setEmbedding(toVectorLiteral(embedding));
-            chunk.setTokenCount(content.length());
+            chunk.setTokenCount(sanitized.length());
             chunk.setCreatedAt(now);
             chunk.setUpdatedAt(now);
             knowledgeChunks.add(chunk);
@@ -229,6 +240,41 @@ public class KnowledgeIngestionService {
             return "";
         }
         return Jsoup.parse(content).text();
+    }
+
+    /**
+     * 剥离 Markdown 代码围栏（``` 或 ~~~）及常见注入分隔标记，仅保留纯文本用于索引/向量化。
+     */
+    private String stripInjectionMarkers(String content) {
+        if (content == null) {
+            return null;
+        }
+        return content
+                .replace("```", "")
+                .replace("~~~", "")
+                .replace("<<<CAMPUS_USER_CONTENT_START>>>", "")
+                .replace("<<<CAMPUS_USER_CONTENT_END>>>", "")
+                .replace("<<<CAMPUS_USER_QUESTION_START>>>", "")
+                .replace("<<<CAMPUS_USER_QUESTION_END>>>", "");
+    }
+
+    /**
+     * 判断文本片段是否疑似提示注入（试图操纵检索/问答模型）。
+     */
+    private boolean isPotentialPromptInjection(String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        String lower = content.toLowerCase();
+        return lower.contains("忽略以上指令")
+                || lower.contains("忽略上述指令")
+                || lower.contains("ignore previous instructions")
+                || lower.contains("ignore the above")
+                || lower.contains("system prompt")
+                || lower.contains("泄露系统提示")
+                || lower.contains("泄露系统提示词")
+                || lower.contains("reveal your prompt")
+                || lower.contains("reveal the system prompt");
     }
 
     private String truncate(String value, int maxLength) {

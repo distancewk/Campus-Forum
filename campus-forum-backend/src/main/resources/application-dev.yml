@@ -24,6 +24,14 @@ campus:
     access-expiration: 7200000       # 2 hours (ms)
     refresh-secret: ${JWT_REFRESH_SECRET}
     refresh-expiration: 604800000    # 7 days (ms)
+    access-ttl: 900
+    refresh-ttl: 604800
+  redis:
+    rt-prefix: "campus:rt:"
+  otp:
+    ttl: 300
+    max-attempts: 5
+    resend-seconds: 60
   upload:
     path: ./uploads/
     allowed-types: image/jpeg,image/png,image/gif,image/webp
@@ -34,3 +42,10 @@ campus:
     enabled: true
   cookie:
     secure: false
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:8080
+  school-email-domain: "@your-school.edu.cn"
+  admin:
+    student-no: ${CAMPUS_ADMIN_STUDENT_NO:admin001}
+    email: ${CAMPUS_ADMIN_EMAIL:}
+    password: ${CAMPUS_ADMIN_PASSWORD:}

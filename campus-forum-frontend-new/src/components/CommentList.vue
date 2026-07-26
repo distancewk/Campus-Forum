@@ -106,6 +106,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ref, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { getComments, createComment, deleteComment } from '@/api/post'
@@ -135,17 +136,6 @@ const replyTo = ref(null)
 const currentPage = ref(1)
 const hasMore = ref(true)
 
-const formatTime = (time) => {
-  if (!time) return ''
-  const date = new Date(time)
-  const now = new Date()
-  const diff = now - date
-
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-  return date.toLocaleDateString('zh-CN')
-}
 
 const canDelete = (comment) => {
   return userStore.user && (userStore.user.id === comment.author?.id || userStore.isAdmin)

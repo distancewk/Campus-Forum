@@ -47,6 +47,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getPostDetail } from '@/api/post'
@@ -54,8 +55,8 @@ import { toggleLike, toggleFavorite } from '@/api/interaction'
 import CommentList from '@/components/CommentList.vue'
 import { Star, Collection, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import DOMPurify from 'dompurify'
 import { useUserStore } from '@/stores/user'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -64,14 +65,9 @@ const loading = ref(false)
 
 const sanitizedContent = computed(() => {
   if (!post.value?.content) return ''
-  return DOMPurify.sanitize(post.value.content)
+  return sanitizeHtml(post.value.content)
 })
 
-const formatTime = (time) => {
-  if (!time) return ''
-  const date = new Date(time)
-  return date.toLocaleString('zh-CN')
-}
 
 const fetchPost = async () => {
   loading.value = true

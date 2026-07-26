@@ -13,6 +13,7 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.messaging.MessagingException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -60,19 +61,21 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
                 if (StompCommand.CONNECT.equals(accessor.getCommand())) {
                     String token = accessor.getFirstNativeHeader("Authorization");
-                    if (token != null && token.startsWith("Bearer ")) {
-                        token = token.substring(7);
-                        if (jwtUtil.validateAccessToken(token)) {
-                            Claims claims = jwtUtil.parseAccessToken(token);
-                            Long userId = Long.valueOf(claims.getSubject());
-                            // 设置 Principal 为用户 ID
-                            UsernamePasswordAuthenticationToken auth =
-                                    new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
-                            accessor.setUser(auth);
-                            return message;
-                        }
+                    if (token == null || !token.startsWith("Bearer ")) {
+                        throw new MessagingException("Missing or invalid Authorization token");
                     }
-                    return null;
+                    token = token.substring(7);
+                    // 校验 JWT 签名与有效期；无效/过期则拒绝连接
+                    if (!jwtUtil.validateAccessToken(token)) {
+                        throw new MessagingException("Invalid or expired token");
+                    }
+                    Claims claims = jwtUtil.parseAccessToken(token);
+                    Long userId = Long.valueOf(claims.getSubject());
+                    // 设置 Principal 为用户 ID
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
+                    accessor.setUser(auth);
+                    return message;
                 }
                 return message;
             }

@@ -4,6 +4,8 @@ import com.campus.auth.dto.RegisterRequest;
 import com.campus.auth.dto.VerifyCodeRequest;
 import com.campus.auth.entity.User;
 import com.campus.auth.mapper.UserMapper;
+import com.campus.auth.token.OtpStore;
+import com.campus.auth.token.RefreshTokenStore;
 import com.campus.common.util.EmailUtil;
 import com.campus.common.util.JwtUtil;
 import com.campus.common.util.RedisUtil;
@@ -16,11 +18,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -28,6 +36,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceTest {
 
     private static final String EMAIL = "student@xxx.edu.cn";
@@ -54,16 +63,24 @@ class AuthServiceTest {
     @Mock
     private HttpServletResponse response;
 
+    @Mock
+    private RefreshTokenStore refreshTokenStore;
+
+    @Mock
+    private OtpStore otpStore;
+
     private AuthService authService;
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        authService = new AuthService(userMapper, redisUtil, emailUtil, jwtUtil, passwordEncoder, objectMapper);
+        authService = new AuthService(userMapper, redisUtil, emailUtil, jwtUtil, passwordEncoder,
+                objectMapper, refreshTokenStore, otpStore);
         ReflectionTestUtils.setField(authService, "refreshExpiration", 604800000L);
         ReflectionTestUtils.setField(authService, "cookieSecure", false);
         ReflectionTestUtils.setField(authService, "cookieSameSite", "Lax");
+        ReflectionTestUtils.setField(authService, "schoolEmailDomain", "@xxx.edu.cn");
     }
 
     @Test
@@ -73,6 +90,7 @@ class AuthServiceTest {
         when(userMapper.selectByEmail(EMAIL)).thenReturn(null);
         when(passwordEncoder.encode(RAW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
         when(redisUtil.hasKey(anyString())).thenReturn(false);
+        when(otpStore.canResend(anyString(), anyString())).thenReturn(true);
 
         authService.register(request);
 
@@ -95,14 +113,16 @@ class AuthServiceTest {
         when(userMapper.selectByEmail(EMAIL)).thenReturn(null);
         when(passwordEncoder.encode(RAW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
         when(redisUtil.hasKey(anyString())).thenReturn(false);
+        when(otpStore.canResend(anyString(), anyString())).thenReturn(true);
         org.mockito.Mockito.doThrow(new IllegalStateException("smtp unavailable"))
                 .when(emailUtil).sendVerifyCode(eq(EMAIL), anyString());
 
         assertThatThrownBy(() -> authService.register(request))
                 .hasMessageContaining("验证码邮件发送失败");
 
-        verify(redisUtil).delete("verify:code:" + EMAIL + ":REGISTER");
-        verify(redisUtil).delete("verify:limit:" + EMAIL);
+        // 邮件发送失败后不应上架验证码，仅清理暂存注册态
+        verify(emailUtil).sendVerifyCode(eq(EMAIL), anyString());
+        verify(otpStore, never()).store(anyString(), anyString(), anyString());
         verify(redisUtil).delete("register:pending:" + EMAIL);
     }
 
@@ -116,12 +136,13 @@ class AuthServiceTest {
             {"studentNo":"20240001","nickname":"测试同学","email":"student@xxx.edu.cn","encodedPassword":"$2a$10$encoded"}
             """;
 
-        when(redisUtil.get("verify:code:" + EMAIL + ":REGISTER")).thenReturn("123456");
         when(redisUtil.get("register:pending:" + EMAIL)).thenReturn(pendingJson);
         when(userMapper.selectByStudentNo(STUDENT_NO)).thenReturn(null);
         when(userMapper.selectByEmail(EMAIL)).thenReturn(null);
-        when(jwtUtil.generateAccessToken(null, "STUDENT")).thenReturn("access-token");
-        when(jwtUtil.generateRefreshToken(null)).thenReturn("refresh-token");
+        when(otpStore.verify(eq("REGISTER"), eq(EMAIL), anyString())).thenReturn(true);
+        when(refreshTokenStore.issue(any(), anyLong())).thenReturn("jti-test");
+        when(jwtUtil.generateAccessToken(any(), eq("STUDENT"), any())).thenReturn("access-token");
+        when(jwtUtil.generateRefreshToken(any(), any(), any())).thenReturn("refresh-token");
 
         authService.verifyAndComplete(request, response);
 

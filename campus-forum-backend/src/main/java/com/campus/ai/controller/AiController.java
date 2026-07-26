@@ -4,6 +4,7 @@ import com.campus.ai.dto.AiAskRequest;
 import com.campus.ai.dto.AiAskResponse;
 import com.campus.ai.dto.AiSessionVO;
 import com.campus.ai.service.AiQuestionAnswerService;
+import com.campus.common.ratelimit.RateLimit;
 import com.campus.common.response.PageQuery;
 import com.campus.common.response.PageResult;
 import com.campus.common.response.R;
@@ -24,6 +25,7 @@ public class AiController {
     private final AiQuestionAnswerService aiQuestionAnswerService;
 
     @PostMapping("/ask")
+    @RateLimit(scope = "user", limit = 20, window = 60)
     public R<AiAskResponse> ask(@RequestBody @Valid AiAskRequest request) {
         Long userId = SecurityUtil.requireCurrentUserId();
         return R.ok(aiQuestionAnswerService.ask(userId, request.getQuestion()));

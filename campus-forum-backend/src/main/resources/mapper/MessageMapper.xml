@@ -41,7 +41,7 @@
     </select>
 
     <!-- ============ 查询聊天记录（联查发送者和接收者信息） ============ -->
-    <select id="selectChatHistory" resultType="com.campus.message.dto.MessageVO">
+    <select id="selectChatHistory" resultType="com.campus.message.entity.Message">
         SELECT
             m.id,
             m.sender_id AS senderId,

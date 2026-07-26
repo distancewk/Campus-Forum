@@ -50,7 +50,21 @@ campus:
   docs:
     enabled: ${CAMPUS_DOCS_ENABLED:false}
   cors:
-    allowed-origins: ${CAMPUS_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${CAMPUS_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
+  school-email-domain: ${CAMPUS_SCHOOL_EMAIL_DOMAIN:@your-school.edu.cn}
   cookie:
     secure: ${CAMPUS_COOKIE_SECURE:true}
     same-site: ${CAMPUS_COOKIE_SAME_SITE:Lax}
+  admin:
+    student-no: ${CAMPUS_ADMIN_STUDENT_NO:admin001}
+    email: ${CAMPUS_ADMIN_EMAIL:}
+    password: ${CAMPUS_ADMIN_PASSWORD:}
+  jwt:
+    access-ttl: 900
+    refresh-ttl: 604800
+  redis:
+    rt-prefix: "campus:rt:"
+  otp:
+    ttl: 300
+    max-attempts: 5
+    resend-seconds: 60

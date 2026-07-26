@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -34,19 +35,22 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(refreshSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateAccessToken(Long userId, String role) {
+    public String generateAccessToken(Long userId, String role, Integer tokenVersion) {
         return Jwts.builder()
             .subject(String.valueOf(userId))
             .claim("role", role)
+            .claim("tv", tokenVersion)
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + accessExpiration))
             .signWith(getAccessKey())
             .compact();
     }
 
-    public String generateRefreshToken(Long userId) {
+    public String generateRefreshToken(Long userId, String jti, Integer tokenVersion) {
         return Jwts.builder()
             .subject(String.valueOf(userId))
+            .claim("jti", jti)
+            .claim("tv", tokenVersion)
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + refreshExpiration))
             .signWith(getRefreshKey())
@@ -97,5 +101,17 @@ public class JwtUtil {
 
     public String getRoleFromAccessToken(String token) {
         return parseAccessToken(token).get("role", String.class);
+    }
+
+    public Integer getTvFromAccessToken(String token) {
+        return parseAccessToken(token).get("tv", Integer.class);
+    }
+
+    public String getJtiFromRefreshToken(String token) {
+        return parseRefreshToken(token).get("jti", String.class);
+    }
+
+    public Integer getTvFromRefreshToken(String token) {
+        return parseRefreshToken(token).get("tv", Integer.class);
     }
 }

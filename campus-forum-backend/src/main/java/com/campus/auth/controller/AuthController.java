@@ -2,7 +2,9 @@ package com.campus.auth.controller;
 
 import com.campus.auth.dto.*;
 import com.campus.auth.service.AuthService;
+import com.campus.common.ratelimit.RateLimit;
 import com.campus.common.response.R;
+import com.campus.common.util.JwtUtil;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,11 +20,13 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtUtil jwtUtil;
 
     /**
      * 发送注册验证码
      */
     @PostMapping("/send-code")
+    @RateLimit(scope = "ip", limit = 5, window = 60)
     public R<Void> sendVerifyCode(@RequestBody @Valid SendCodeRequest request) {
         authService.sendVerifyCode(request.getEmail(), "REGISTER");
         return R.ok();
@@ -75,8 +79,19 @@ public class AuthController {
      * 登出
      */
     @PostMapping("/logout")
-    public R<Void> logout(HttpServletResponse response) {
-        authService.logout(response);
+    public R<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = extractRefreshTokenFromCookie(request);
+        Long userId = null;
+        String jti = null;
+        if (refreshToken != null) {
+            try {
+                userId = jwtUtil.getUserIdFromRefreshToken(refreshToken);
+                jti = jwtUtil.getJtiFromRefreshToken(refreshToken);
+            } catch (RuntimeException ignored) {
+                // 令牌无效：仍执行本地 Cookie 清理
+            }
+        }
+        authService.logout(userId, jti, response);
         return R.ok();
     }
 
@@ -84,6 +99,7 @@ public class AuthController {
      * 忘记密码 - 发送验证码
      */
     @PostMapping("/forgot-password")
+    @RateLimit(scope = "ip", limit = 5, window = 60)
     public R<Void> forgotPassword(@RequestBody @Valid SendCodeRequest request) {
         authService.forgotPassword(request);
         return R.ok();

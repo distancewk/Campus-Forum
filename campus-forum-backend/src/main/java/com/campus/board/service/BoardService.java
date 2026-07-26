@@ -1,6 +1,7 @@
 package com.campus.board.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campus.board.dto.BoardCreateRequest;
 import com.campus.board.dto.BoardUpdateRequest;
 import com.campus.board.dto.BoardVO;
@@ -107,6 +108,8 @@ public class BoardService {
             throw new BusinessException(ResultCode.CONFLICT, "该板块下仍有帖子，无法删除");
         }
 
-        boardMapper.deleteById(id);
+        LambdaUpdateWrapper<Board> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(Board::getId, id).set(Board::getDeleted, 1);
+        boardMapper.update(null, wrapper);
     }
 }

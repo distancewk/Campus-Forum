@@ -173,8 +173,11 @@ public class CommentService {
         comment.setDeleted(1);
         commentMapper.updateById(comment);
 
-        // 4. 帖子评论数 -1
-        postMapper.updateCommentCount(postId, -1);
+        // 4. 帖子评论数 -1（仅当评论曾计入帖子计数，即非待审核状态，与创建逻辑一致）
+        boolean wasPublished = comment.getStatus() != null && comment.getStatus() != 0;
+        if (wasPublished) {
+            postMapper.updateCommentCount(postId, -1);
+        }
     }
 
     /**

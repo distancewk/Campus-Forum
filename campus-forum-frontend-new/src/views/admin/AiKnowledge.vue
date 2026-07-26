@@ -131,6 +131,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, UploadFilled } from '@element-plus/icons-vue'
@@ -283,10 +284,6 @@ const listText = (value) => {
   }
 }
 
-const formatTime = (time) => {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN')
-}
 
 watch(activeTab, (tab) => {
   if (tab === 'moderation' && moderationRecords.value.length === 0) {

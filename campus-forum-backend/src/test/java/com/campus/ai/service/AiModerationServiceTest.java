@@ -1,20 +1,22 @@
 package com.campus.ai.service;
 
 import com.campus.ai.client.AiProviderClient;
-import com.campus.ai.config.AiProperties;
 import com.campus.ai.dto.AiChatMessage;
 import com.campus.ai.dto.AiModerationAdvice;
 import com.campus.ai.entity.AiModerationResult;
+import com.campus.ai.exception.ContentRejectedException;
 import com.campus.ai.mapper.AiModerationResultMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,22 +26,18 @@ class AiModerationServiceTest {
     private AiModerationResultMapper moderationResultMapper;
 
     @Test
-    void localFallbackFlagsContactDiversionWhenProviderFails() {
-        AiProperties properties = new AiProperties();
-        properties.getModeration().setEnabled(true);
-        AiModerationService service = new AiModerationService(new FailingProvider(), null, properties);
+    void reviewFailsClosedWhenProviderFails() {
+        // AiModerationService is fail-closed (moderation-enabled defaults true via @Value).
+        AiModerationService service = new AiModerationService(new FailingProvider(), null);
+        ReflectionTestUtils.setField(service, "moderationEnabled", true);
 
-        AiModerationAdvice advice = service.review("POST", "资料", "加我微信 abc123 领资料", 1L, null);
-
-        assertThat(advice.getRiskLevel()).isEqualTo("MEDIUM");
-        assertThat(advice.getRiskTypes()).contains("CONTACT_DIVERSION");
-        assertThat(advice.getSuggestedAction()).isEqualTo("REVIEW");
+        assertThatThrownBy(() -> service.review("POST", "资料", "加我微信 abc123 领资料", 1L, null))
+                .isInstanceOf(ContentRejectedException.class);
     }
 
     @Test
     void bindTargetAndSavePersistsPendingStatusForMediumRisk() {
-        AiProperties properties = new AiProperties();
-        AiModerationService service = new AiModerationService(new FailingProvider(), moderationResultMapper, properties);
+        AiModerationService service = new AiModerationService(new FailingProvider(), moderationResultMapper);
         AiModerationAdvice advice = new AiModerationAdvice(
                 "MEDIUM",
                 List.of("SCAM"),

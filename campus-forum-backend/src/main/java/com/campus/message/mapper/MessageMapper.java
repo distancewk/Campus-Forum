@@ -18,12 +18,13 @@ public interface MessageMapper extends BaseMapper<Message> {
     List<ConversationVO> selectConversations(@Param("userId") Long userId);
 
     /**
-     * 查询与某用户的聊天记录（分页），结果由 MessageMapper.xml 定义
+     * 查询与某用户的聊天记录（分页），结果由 MessageMapper.xml 定义。
+     * 联表带回收发件人展示字段，由 MessageService.convertToVO 映射到 MessageVO，避免 N+1 查询。
      */
-    List<MessageVO> selectChatHistory(@Param("userId") Long userId,
-                                       @Param("otherUserId") Long otherUserId,
-                                       @Param("offset") int offset,
-                                       @Param("limit") int limit);
+    List<Message> selectChatHistory(@Param("userId") Long userId,
+                                    @Param("otherUserId") Long otherUserId,
+                                    @Param("offset") int offset,
+                                    @Param("limit") int limit);
 
     /**
      * 查询聊天记录总数

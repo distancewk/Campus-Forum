@@ -33,10 +33,10 @@
 
 <script setup>
 import { nextTick, ref, watch } from 'vue'
-import DOMPurify from 'dompurify'
 import { Brush, Link, List, Picture, Sort, Tickets, Top } from '@element-plus/icons-vue'
 import { uploadImage } from '@/api/post'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const props = defineProps({
   modelValue: {
@@ -50,14 +50,7 @@ const emit = defineEmits(['update:modelValue'])
 const editorRef = ref(null)
 let syncingFromParent = false
 
-const sanitize = (html) => DOMPurify.sanitize(html || '', {
-  ALLOWED_TAGS: [
-    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'h2', 'h3',
-    'ul', 'ol', 'li', 'blockquote', 'a', 'img'
-  ],
-  ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/uploads\/)/i
-})
+const sanitize = (html) => sanitizeHtml(html)
 
 const normalizeHtml = (html) => sanitize(html).trim()
 

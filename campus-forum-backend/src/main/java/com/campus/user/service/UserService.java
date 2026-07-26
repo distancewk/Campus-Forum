@@ -5,6 +5,7 @@ import com.campus.auth.mapper.UserMapper;
 import com.campus.common.enums.ResultCode;
 import com.campus.common.exception.BusinessException;
 import com.campus.common.util.FileUtil;
+import com.campus.common.util.HtmlSanitizer;
 import com.campus.common.util.SecurityUtil;
 import com.campus.user.dto.UpdateProfileRequest;
 import com.campus.user.dto.UserProfileVO;
@@ -52,14 +53,16 @@ public class UserService {
         User user = new User();
         user.setId(userId);
         if (request.getNickname() != null) {
-            String nickname = request.getNickname().trim();
+            // 后端清洗：昵称剥离所有 HTML 标签，防止存储型 XSS。
+            String nickname = HtmlSanitizer.cleanPlain(request.getNickname()).trim();
             if (nickname.isEmpty() || nickname.length() > 20) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "昵称长度为1-20个字符");
             }
             user.setNickname(nickname);
         }
         if (request.getBio() != null) {
-            String bio = request.getBio().trim();
+            // 后端清洗：简介剥离所有 HTML 标签。
+            String bio = HtmlSanitizer.cleanPlain(request.getBio()).trim();
             if (bio.length() > 200) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "简介不能超过200个字符");
             }

@@ -75,8 +75,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
+import { formatTime } from '@/utils/format'
 import { useMessageStore } from '@/stores/message'
 import { getConversations, getChatHistory, markAsRead } from '@/api/message'
 import { sendMessage, isConnected } from '@/utils/websocket'
@@ -95,19 +96,6 @@ const messageInput = ref('')
 const messagesContainer = ref(null)
 const currentPage = ref(1)
 const currentUserId = computed(() => userStore.user?.id)
-
-const formatTime = (time) => {
-  if (!time) return ''
-  const date = new Date(time)
-  const now = new Date()
-  const diff = now - date
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-  return date.toLocaleDateString('zh-CN')
-}
 
 const fetchConversations = async () => {
   loadingConversations.value = true
@@ -181,14 +169,15 @@ const handleNewMessage = (message) => {
 
 onMounted(() => {
   fetchConversations()
-  // 注册消息回调
-  window.__messageCallback = handleNewMessage
 })
 
-// 清理
-onUnmounted(() => {
-  window.__messageCallback = null
-})
+// 通过 Pinia store 监听收到的新消息
+watch(
+  () => messageStore.latest,
+  (msg) => {
+    if (msg) handleNewMessage(msg)
+  }
+)
 </script>
 
 <style lang="scss" scoped>

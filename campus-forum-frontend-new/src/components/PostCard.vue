@@ -52,6 +52,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ArrowRight, ChatDotRound, Star, View } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -61,19 +62,6 @@ const props = defineProps({
   }
 })
 
-const formatTime = (time) => {
-  if (!time) return ''
-  const date = new Date(time)
-  const now = new Date()
-  const diff = now - date
-
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
-
-  return date.toLocaleDateString('zh-CN')
-}
 </script>
 
 <style lang="scss" scoped>

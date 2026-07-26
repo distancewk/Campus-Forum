@@ -4,6 +4,8 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [vue()],
+  // 默认使用 node_modules/.vite；可用 VITE_CACHE_DIR 覆盖（如 CI/沙箱环境规避 node_modules 清理守卫）
+  cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')
@@ -34,5 +36,10 @@ export default defineConfig({
         }
       }
     }
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    exclude: ['node_modules', 'dist', 'e2e', '**/e2e/**']
   }
 })

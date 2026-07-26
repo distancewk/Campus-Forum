@@ -19,7 +19,6 @@ public class RegisterRequest {
 
     @NotBlank(message = "邮箱不能为空")
     @Email(message = "邮箱格式不正确")
-    @Pattern(regexp = "^[\\w.-]+@xxx\\.edu\\.cn$", message = "必须使用学校邮箱")
     private String email;
 
     @NotBlank(message = "密码不能为空")

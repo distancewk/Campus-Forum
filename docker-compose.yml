@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: campus_forum
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./campus-forum-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CAMPUS_ADMIN_STUDENT_NO: ${CAMPUS_ADMIN_STUDENT_NO}
+      CAMPUS_ADMIN_EMAIL: ${CAMPUS_ADMIN_EMAIL}
+      CAMPUS_ADMIN_PASSWORD: ${CAMPUS_ADMIN_PASSWORD}
+      CAMPUS_SCHOOL_EMAIL_DOMAIN: ${CAMPUS_SCHOOL_EMAIL_DOMAIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  frontend:
+    build: ./campus-forum-frontend-new
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata: {}

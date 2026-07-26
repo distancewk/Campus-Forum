@@ -79,6 +79,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ref, onMounted } from 'vue'
 import { getUserList, updateUserStatus } from '@/api/admin'
 import { Search } from '@element-plus/icons-vue'
@@ -92,10 +93,6 @@ const total = ref(0)
 const searchKeyword = ref('')
 const statusFilter = ref(null)
 
-const formatTime = (time) => {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN')
-}
 
 const fetchUsers = async () => {
   loading.value = true

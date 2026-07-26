@@ -61,4 +61,16 @@ public interface UserMapper extends BaseMapper<User> {
      * 查询 N 天内活跃用户数（发帖或评论的用户）
      */
     Long selectActiveUsers(@Param("days") int days);
+
+    /**
+     * 会话撤销：原子自增 token_version，使该用户所有旧 token 立即失效。
+     */
+    @Update("UPDATE \"user\" SET token_version = token_version + 1 WHERE id = #{id}")
+    int incrTokenVersion(@Param("id") Long id);
+
+    /**
+     * 重置密码：更新密码并清零登录失败/锁定，updated_at 由 DB 维护。
+     */
+    @Update("UPDATE \"user\" SET password = #{password}, login_fail = 0, locked_until = NULL, updated_at = NOW() WHERE id = #{id}")
+    int updatePasswordAndResetFail(@Param("id") Long id, @Param("password") String password);
 }

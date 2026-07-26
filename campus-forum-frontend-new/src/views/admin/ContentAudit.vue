@@ -64,6 +64,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ref, onMounted } from 'vue'
 import { getPendingPosts, auditPost, getPendingComments, auditComment } from '@/api/admin'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -75,10 +76,6 @@ const pageSize = ref(20)
 const total = ref(0)
 const activeTab = ref('posts')
 
-const formatTime = (time) => {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN')
-}
 
 const fetchRecords = async () => {
   loading.value = true

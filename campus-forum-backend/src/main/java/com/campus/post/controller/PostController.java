@@ -1,5 +1,6 @@
 package com.campus.post.controller;
 
+import com.campus.common.ratelimit.RateLimit;
 import com.campus.common.response.PageResult;
 import com.campus.common.response.R;
 import com.campus.post.dto.*;
@@ -38,6 +39,7 @@ public class PostController {
      * 发布帖子（需认证）
      */
     @PostMapping
+    @RateLimit(scope = "user", limit = 10, window = 60)
     public R<PostVO> createPost(@RequestBody @Valid PostCreateRequest request) {
         return R.ok(postService.createPost(request));
     }

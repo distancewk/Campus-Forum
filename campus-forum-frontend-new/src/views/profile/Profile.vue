@@ -64,6 +64,7 @@
 </template>
 
 <script setup>
+import { formatTime } from '@/utils/format'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
@@ -98,10 +99,6 @@ const editRules = {
   ]
 }
 
-const formatTime = (time) => {
-  if (!time) return ''
-  return new Date(time).toLocaleDateString('zh-CN')
-}
 
 const fetchProfile = async () => {
   try {
