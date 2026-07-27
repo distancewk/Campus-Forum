@@ -8,6 +8,7 @@ import com.campus.common.exception.BusinessException;
 import com.campus.interaction.dto.ToggleResponse;
 import com.campus.interaction.entity.Like;
 import com.campus.interaction.mapper.LikeMapper;
+import com.campus.notification.service.NotificationService;
 import com.campus.post.entity.Post;
 import com.campus.post.mapper.PostMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class LikeService {
     private final LikeMapper likeMapper;
     private final PostMapper postMapper;
     private final CommentMapper commentMapper;
+    private final NotificationService notificationService;
 
     /**
      * 点赞/取消点赞（幂等切换）
@@ -67,6 +69,7 @@ public class LikeService {
             try {
                 likeMapper.insert(like);
                 updateTargetCount(targetType, targetId, 1);
+                notifyLike(userId, targetType, targetId);
             } catch (DuplicateKeyException e) {
                 // 并发请求已经插入同一条点赞记录，当前请求按已点赞处理，不重复增加计数。
             }
@@ -98,6 +101,34 @@ public class LikeService {
             return comment == null || comment.getLikeCount() == null ? 0 : comment.getLikeCount();
         }
         return 0;
+    }
+
+    /**
+     * 点赞后通知被点赞内容（帖子/评论）的作者。
+     */
+    private void notifyLike(Long actorId, String targetType, Long targetId) {
+        if ("POST".equals(targetType)) {
+            Post post = postMapper.selectById(targetId);
+            if (post != null && !actorId.equals(post.getAuthorId())) {
+                notificationService.notify(
+                        post.getAuthorId(), "LIKE", "POST", targetId,
+                        actorId, "赞了你的帖子", truncate(post.getTitle()), "/post/" + targetId);
+            }
+        } else if ("COMMENT".equals(targetType)) {
+            Comment c = commentMapper.selectById(targetId);
+            if (c != null && !actorId.equals(c.getAuthorId())) {
+                notificationService.notify(
+                        c.getAuthorId(), "LIKE", "COMMENT", targetId,
+                        actorId, "赞了你的评论", truncate(c.getContent()), "/post/" + c.getPostId());
+            }
+        }
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= 100 ? value : value.substring(0, 100);
     }
 
     private void ensureTargetExists(String targetType, Long targetId) {

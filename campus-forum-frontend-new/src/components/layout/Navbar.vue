@@ -34,8 +34,12 @@
           <span class="btn-text">发帖</span>
         </el-button>
 
+        <el-badge :value="notificationStore.unreadCount" :hidden="notificationStore.unreadCount === 0" class="message-badge">
+          <el-button :icon="Bell" circle title="通知" aria-label="通知" @click="$router.push('/notifications')" />
+        </el-badge>
+
         <el-badge :value="messageStore.unreadCount" :hidden="messageStore.unreadCount === 0" class="message-badge">
-          <el-button :icon="Bell" circle title="消息" aria-label="消息" @click="$router.push('/messages')" />
+          <el-button :icon="ChatDotRound" circle title="消息" aria-label="消息" @click="$router.push('/messages')" />
         </el-badge>
 
         <el-dropdown trigger="click" @command="handleCommand">
@@ -72,10 +76,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useMessageStore } from '@/stores/message'
+import { useNotificationStore } from '@/stores/notification'
 import {
   ChatDotRound, Search, EditPen, Bell, ArrowDown,
   User, Setting, SwitchButton
@@ -85,6 +90,13 @@ import { ElMessageBox } from 'element-plus'
 const router = useRouter()
 const userStore = useUserStore()
 const messageStore = useMessageStore()
+const notificationStore = useNotificationStore()
+
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    notificationStore.fetchUnreadCount()
+  }
+})
 
 const searchKeyword = ref('')
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'

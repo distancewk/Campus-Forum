@@ -1,6 +1,7 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client/dist/sockjs'
 import { useMessageStore } from '@/stores/message'
+import { useNotificationStore } from '@/stores/notification'
 
 let stompClient = null
 let currentToken = ''
@@ -41,6 +42,17 @@ export function connectWebSocket(token, onMessage) {
           messageStore.pushMessage(body)
         } catch (e) {
           console.error('解析 WebSocket 消息失败:', e)
+        }
+      })
+
+      // 订阅个人通知队列（点赞 / 评论 / 回复 / 审核结果）
+      stompClient.subscribe('/user/queue/notifications', (message) => {
+        try {
+          const body = JSON.parse(message.body)
+          const notificationStore = useNotificationStore()
+          notificationStore.pushNotification(body)
+        } catch (e) {
+          console.error('解析 WebSocket 通知失败:', e)
         }
       })
     },

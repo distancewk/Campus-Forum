@@ -1,7 +1,10 @@
 package com.campus.comment.service;
 
+import com.campus.ai.config.AiProperties;
 import com.campus.ai.service.AsyncModerationService;
+import com.campus.ai.service.KnowledgeIngestionService;
 import com.campus.comment.dto.CommentCreateRequest;
+import com.campus.notification.service.NotificationService;
 import com.campus.comment.dto.CommentVO;
 import com.campus.comment.entity.Comment;
 import com.campus.comment.mapper.CommentMapper;
@@ -14,6 +17,7 @@ import com.campus.post.entity.Post;
 import com.campus.post.mapper.PostMapper;
 import com.campus.user.dto.AuthorVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -33,6 +37,28 @@ public class CommentService {
     private final PostMapper postMapper;
     private final LikeMapper likeMapper;
     private final AsyncModerationService asyncModerationService;
+    private final AiProperties aiProperties;
+    private final NotificationService notificationService;
+    private final KnowledgeIngestionService knowledgeIngestionService;
+
+    @Value("${campus.ai.moderation-enabled:true}")
+    private boolean moderationEnabled;
+
+    private boolean aiActive() {
+        return aiProperties.isEnabled() && moderationEnabled;
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= 100 ? value : value.substring(0, 100);
+    }
+
+    private String moderationMode() {
+        String m = aiProperties.getModeration().getMode();
+        return m == null ? "post" : m;
+    }
 
     /**
      * 获取评论列表（树形结构）
@@ -134,16 +160,33 @@ public class CommentService {
         comment.setParentId(request.getParentId());
         comment.setReplyToUserId(request.getReplyToUserId());
         comment.setLikeCount(0);
-        // 先以"待审"落库，AI 审核异步进行（事务提交后触发），通过后再翻为可见并计入评论数。
-        comment.setStatus(0);
+        // 发布策略（与发帖一致）：默认直接公开可见；仅当 AI 启用且 mode=pre 才"先审后发"。
+        boolean prePublish = aiActive() && "pre".equals(moderationMode());
+        comment.setStatus(prePublish ? 0 : 1);
         comment.setCreatedAt(LocalDateTime.now());
         comment.setDeleted(0);
         commentMapper.insert(comment);
-        dispatchCommentModeration(comment.getId(), postId, safeContent, currentUserId);
+        // 7. 通知：帖主收到新评论；楼中楼回复则 @目标用户收到回复通知
+        if (!currentUserId.equals(post.getAuthorId())) {
+            notificationService.notify(post.getAuthorId(), "COMMENT", "POST", postId,
+                    currentUserId, "评论了你的帖子", truncate(safeContent), "/post/" + postId);
+        }
+        if (request.getReplyToUserId() != null && !request.getReplyToUserId().equals(currentUserId)) {
+            notificationService.notify(request.getReplyToUserId(), "REPLY", "COMMENT", comment.getId(),
+                    currentUserId, "回复了你", truncate(safeContent), "/post/" + postId);
+        }
+        // 立即公开（非 pre）则计入帖子评论数。
+        if (!prePublish) {
+            postMapper.updateCommentCount(postId, 1);
+        }
+        // AI 启用时后台复核：pre 模式审核通过才公开；post 模式事后复核。
+        if (aiActive()) {
+            dispatchCommentModeration(comment.getId(), postId, safeContent, currentUserId, prePublish);
+        }
 
         // 6. 返回 CommentVO
         CommentVO vo = buildCommentVO(comment, currentUserId);
-        vo.setPendingReview(true);
+        vo.setPendingReview(prePublish);
         return vo;
     }
 
@@ -151,20 +194,21 @@ public class CommentService {
      * 事务提交后再触发异步 AI 审核，避免异步线程在评论尚未提交时就读不到记录。
      * 若无活跃事务（理论不应发生），则直接触发。
      */
-    private void dispatchCommentModeration(Long commentId, Long postId, String content, Long authorId) {
+    private void dispatchCommentModeration(Long commentId, Long postId, String content, Long authorId, boolean wasPending) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             Long cid = commentId;
             Long pid = postId;
             String c = content;
             Long uid = authorId;
+            boolean pending = wasPending;
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    asyncModerationService.moderateComment(cid, pid, c, uid);
+                    asyncModerationService.moderateComment(cid, pid, c, uid, pending);
                 }
             });
         } else {
-            asyncModerationService.moderateComment(commentId, postId, content, authorId);
+            asyncModerationService.moderateComment(commentId, postId, content, authorId, wasPending);
         }
     }
 
@@ -194,6 +238,9 @@ public class CommentService {
         if (wasPublished) {
             postMapper.updateCommentCount(postId, -1);
         }
+
+        // 5. 清理该评论在 AI 问答向量库中的索引（仅精华评论有索引，非精华则为空操作），避免问答召回已删除内容
+        knowledgeIngestionService.removeBySource("COMMENT", commentId);
     }
 
     /**
