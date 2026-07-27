@@ -3,6 +3,7 @@ package com.campus.admin.service;
 import com.campus.admin.dto.*;
 import com.campus.ai.service.AiModerationService;
 import com.campus.ai.service.KnowledgeIngestionService;
+import com.campus.notification.service.NotificationService;
 import com.campus.auth.entity.User;
 import com.campus.auth.mapper.UserMapper;
 import com.campus.comment.dto.CommentVO;
@@ -35,6 +36,7 @@ public class AdminService {
     private final CommentMapper commentMapper;
     private final AiModerationService aiModerationService;
     private final KnowledgeIngestionService knowledgeIngestionService;
+    private final NotificationService notificationService;
 
     /**
      * 分页查询用户列表
@@ -110,6 +112,11 @@ public class AdminService {
             post.setStatus(1);
             postMapper.updateById(post);
             aiModerationService.markAdminReviewed("POST", postId, "ADMIN_APPROVED", adminId);
+            Long authorId = post.getAuthorId();
+            if (authorId != null && !authorId.equals(adminId)) {
+                notificationService.notify(authorId, "POST_APPROVED", "POST", postId,
+                        adminId, "你的帖子已通过审核", truncate(post.getTitle()), "/post/" + postId);
+            }
             runAfterCommit(() -> safeIndexPublishedPost(postId));
         } else {
             // 拒绝 - 逻辑删除
@@ -117,6 +124,13 @@ public class AdminService {
             post.setDeleted(1);
             postMapper.updateById(post);
             aiModerationService.markAdminReviewed("POST", postId, "ADMIN_REJECTED", adminId);
+            // 被拒帖若曾进入向量库（如已通过后又被驳回），清理其索引
+            knowledgeIngestionService.removeBySource("POST", postId);
+            Long authorId = post.getAuthorId();
+            if (authorId != null && !authorId.equals(adminId)) {
+                notificationService.notify(authorId, "POST_REJECTED", "POST", postId,
+                        adminId, "你的帖子未通过审核", truncate(post.getTitle()), "/post/" + postId);
+            }
         }
     }
 
@@ -183,6 +197,9 @@ public class AdminService {
         commentMapper.updateById(comment);
         if (enabled) {
             runAfterCommit(() -> safeIndexFeaturedComment(commentId));
+        } else {
+            // 取消精华：清理该评论在 AI 问答向量库中的索引，避免问答召回已取消精华的内容
+            runAfterCommit(() -> safeRemoveBySource("COMMENT", commentId));
         }
     }
 
@@ -226,6 +243,15 @@ public class AdminService {
 
         post.setDeleted(1);
         postMapper.updateById(post);
+        // 清理该帖在 AI 问答向量库中的索引，避免问答召回已删除内容
+        knowledgeIngestionService.removeBySource("POST", postId);
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= 100 ? value : value.substring(0, 100);
     }
 
     private void safeIndexPublishedPost(Long postId) {
@@ -254,6 +280,14 @@ public class AdminService {
             knowledgeIngestionService.indexFeaturedComment(commentId);
         } catch (RuntimeException e) {
             log.warn("Index featured comment failed, commentId={}", commentId, e);
+        }
+    }
+
+    private void safeRemoveBySource(String sourceType, Long sourceId) {
+        try {
+            knowledgeIngestionService.removeBySource(sourceType, sourceId);
+        } catch (RuntimeException e) {
+            log.warn("Remove knowledge source index failed, sourceType={}, sourceId={}", sourceType, sourceId, e);
         }
     }
 
