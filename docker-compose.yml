@@ -32,6 +32,7 @@ services:
       CAMPUS_ADMIN_EMAIL: ${CAMPUS_ADMIN_EMAIL}
       CAMPUS_ADMIN_PASSWORD: ${CAMPUS_ADMIN_PASSWORD}
       CAMPUS_SCHOOL_EMAIL_DOMAIN: ${CAMPUS_SCHOOL_EMAIL_DOMAIN}
+      CAMPUS_UPLOAD_BASE_URL: ${CAMPUS_UPLOAD_BASE_URL:}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +40,8 @@ services:
         condition: service_healthy
     expose:
       - "8080"
+    volumes:
+      - ./uploads:/app/uploads
 
   frontend:
     build: ./campus-forum-frontend-new

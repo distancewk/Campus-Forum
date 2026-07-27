@@ -34,6 +34,7 @@ campus:
     resend-seconds: 60
   upload:
     path: ./uploads/
+    base-url: http://localhost:8080
     allowed-types: image/jpeg,image/png,image/gif,image/webp
     max-size: 5242880                # 5MB (bytes)
   email:

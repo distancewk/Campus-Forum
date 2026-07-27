@@ -3,6 +3,8 @@ package com.campus.common.util;
 import com.campus.common.enums.ResultCode;
 import com.campus.common.exception.BusinessException;
 import org.apache.commons.io.FilenameUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +25,8 @@ import java.util.UUID;
 @Component
 public class FileUtil {
 
+    private static final Logger log = LoggerFactory.getLogger(FileUtil.class);
+
     private static final Map<String, List<String>> ALLOWED_EXTENSIONS = Map.of(
             "image/jpeg", List.of("jpg", "jpeg"),
             "image/png", List.of("png"),
@@ -38,6 +42,9 @@ public class FileUtil {
 
     @Value("${campus.upload.max-size:5242880}")
     private long maxSize;
+
+    @Value("${campus.upload.base-url:}")
+    private String uploadBaseUrl;
 
     /**
      * Upload a file and return the relative path.
@@ -98,7 +105,49 @@ public class FileUtil {
             throw new BusinessException(ResultCode.INTERNAL_ERROR, "文件上传失败");
         }
 
-        return "/uploads/" + relativePath;
+        String relativeUrl = "/uploads/" + relativePath;
+        return toAbsoluteUrl(relativeUrl);
+    }
+
+    /**
+     * 若配置了 campus.upload.base-url，则把相对路径拼成绝对 URL（前端可直接用作 <img src>）；
+     * 未配置时返回相对路径 /uploads/...，由前端所在域名提供 /uploads 路由。
+     */
+    private String toAbsoluteUrl(String relativeUrl) {
+        if (uploadBaseUrl == null || uploadBaseUrl.isBlank()) {
+            return relativeUrl;
+        }
+        String base = uploadBaseUrl.endsWith("/")
+                ? uploadBaseUrl.substring(0, uploadBaseUrl.length() - 1)
+                : uploadBaseUrl;
+        return base + relativeUrl;
+    }
+
+    /**
+     * 依据返回给前端的 URL（绝对或相对）删除对应本地文件。
+     * 支持绝对 URL（含 campus.upload.base-url 前缀）与相对路径 /uploads/...；
+     * 非本系统托管的资源（如外链）一律跳过。文件不存在时静默跳过（幂等）。
+     */
+    public void deleteByUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        int idx = url.indexOf("/uploads/");
+        if (idx < 0) {
+            return;
+        }
+        String relativePath = url.substring(idx + "/uploads/".length());
+        Path basePath = Paths.get(uploadPath).toAbsolutePath().normalize();
+        Path targetPath = basePath.resolve(relativePath).normalize();
+        if (!targetPath.startsWith(basePath)) {
+            log.warn("拒绝删除越界路径: {}", targetPath);
+            return;
+        }
+        try {
+            Files.deleteIfExists(targetPath);
+        } catch (IOException e) {
+            log.warn("删除上传文件失败: {}", targetPath, e);
+        }
     }
 
     private boolean hasValidSignature(MultipartFile file, String contentType) {
