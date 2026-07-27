@@ -52,6 +52,7 @@ campus:
     chat-model: qwen-plus
     moderation-enabled: true      # 恢复 AI 审核（api-key 通过 .env 的 CAMPUS_AI_API_KEY 注入）
     moderation:
+      mode: ${CAMPUS_AI_MODERATION_MODE:post}   # post=先发布后复核（默认）；pre=先审后发；off=不审核
       prompt-cache-ttl-seconds: 3600   # 复用固定系统提示前缀，省 token/延迟
       cache-ttl-seconds: 600           # 相同内容 10 分钟内复用审核结果
       rate-limit-per-user: 30          # 单用户每分钟审核上限

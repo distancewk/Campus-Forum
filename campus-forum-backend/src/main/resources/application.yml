@@ -45,6 +45,7 @@ campus:
     moderation-medium-threshold: ${CAMPUS_AI_MODERATION_MEDIUM_THRESHOLD:0.55}
     moderation-high-threshold: ${CAMPUS_AI_MODERATION_HIGH_THRESHOLD:0.82}
     moderation:
+      mode: ${CAMPUS_AI_MODERATION_MODE:post}
       cache-enabled: ${CAMPUS_AI_MODERATION_CACHE_ENABLED:true}
       cache-ttl-seconds: ${CAMPUS_AI_MODERATION_CACHE_TTL:600}
       rate-limit-per-user: ${CAMPUS_AI_MODERATION_RL_USER:20}

@@ -37,6 +37,8 @@ public class AiProperties {
     @Data
     public static class Moderation {
         private boolean enabled = true;
+        // 审核模式：off=不审核直接发布；post=先发布后复核（默认）；pre=先审后发。
+        private String mode = "post";
         private double mediumThreshold = 0.55;
         private double highThreshold = 0.82;
         // Prompt 缓存 TTL（秒）。>0 时审核请求附带 prompt_cache，复用固定系统提示以省 token/延迟。

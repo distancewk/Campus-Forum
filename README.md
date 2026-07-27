@@ -112,9 +112,11 @@ npm run dev
 | `CAMPUS_AI_ENABLED` | 是否启用 AI 能力（默认 `false`；dev 环境已设为 `true`） |
 | `CAMPUS_AI_BASE_URL` | 兼容 OpenAI 接口的 API 基址（默认官方 OpenAI；dev 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`） |
 | `CAMPUS_AI_CHAT_MODEL` | 聊天 / 审核模型（默认 `gpt-4o-mini`；dev 默认 `qwen-plus`） |
-| `CAMPUS_AI_MODERATION_ENABLED` | 是否启用 AI 内容审核（默认 `true`，且**失败拒绝 fail-closed**） |
+| `CAMPUS_AI_MODERATION_ENABLED` | 是否启用 AI 内容审核（默认 `true`） |
+| `CAMPUS_AI_MODERATION_MODE` | 审核模式：`post`=先发布后复核（**默认**，不阻断发帖/评论）；`pre`=先审后发；`off`=不审核直接发布 |
 
-> 邮件（SMTP）变量用于邮箱验证码等完整功能；AI 相关变量用于 AI 审核与问答。二者基础运行可不填，但 **AI 审核默认开启且 fail-closed：未配置 `CAMPUS_AI_API_KEY` 时，发帖/评论会因审核失败而被拒绝发布**。
+> 邮件（SMTP）变量用于邮箱验证码等完整功能；AI 相关变量用于 AI 审核与问答。二者基础运行可不填。
+> **发布策略（第一性原理）**：默认 `CAMPUS_AI_ENABLED=false`（未配 Key）或 `CAMPUS_AI_MODERATION_ENABLED=false` 时，发帖/评论**直接公开可见**（已做 HTML 清洗保底），AI 审核**不调用、不阻断**。仅当 `CAMPUS_AI_ENABLED=true` 且 `CAMPUS_AI_MODERATION_ENABLED=true` 时 AI 才介入；此时默认 `mode=post` 为"先发布、后台复核"，AI 明确判拒才下架；设 `mode=pre` 才回到"先审后发"。这样**不接 AI 也能正常发帖/评论**。
 
 ## 设置 API Key（启用 AI 功能）
 
@@ -132,6 +134,7 @@ AI 能力依赖一个大模型 API Key，通过环境变量 `CAMPUS_AI_API_KEY` 
    CAMPUS_AI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
    CAMPUS_AI_CHAT_MODEL=qwen-plus
    CAMPUS_AI_MODERATION_ENABLED=true
+   CAMPUS_AI_MODERATION_MODE=post   # 先发布后复核（默认）；pre=先审后发
    ```
 
 3. 后端 `application-dev.yml` 已默认指向 DashScope，直接启动即可：
@@ -154,6 +157,7 @@ CAMPUS_AI_ENABLED=true
 CAMPUS_AI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # 或你选用的兼容 OpenAI 接口的服务
 CAMPUS_AI_CHAT_MODEL=qwen-plus
 CAMPUS_AI_MODERATION_ENABLED=true
+CAMPUS_AI_MODERATION_MODE=post   # 先发布后复核（默认）；pre=先审后发
 ```
 
 然后 `docker compose up -d --build` 启动，`backend` 服务会读取这些变量。
