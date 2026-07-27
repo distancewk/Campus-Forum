@@ -22,8 +22,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,7 +54,8 @@ public class KnowledgeIngestionService {
 
         String title = titleOrFallback(post.getTitle(), "帖子 " + postId);
         String content = title + "\n" + htmlToText(post.getContent());
-        AiKnowledgeDocument document = createDocument(title, "POST", postId, null, null, null);
+        AiKnowledgeDocument document = findOrCreateDocument("POST", postId, title);
+        deleteDocumentChunks(document.getId());
         indexTextIntoDocument(document, content, true);
     }
 
@@ -64,7 +67,8 @@ public class KnowledgeIngestionService {
 
         String title = "精华评论 " + commentId;
         String content = title + "\n" + (comment.getContent() == null ? "" : comment.getContent());
-        AiKnowledgeDocument document = createDocument(title, "COMMENT", commentId, null, null, null);
+        AiKnowledgeDocument document = findOrCreateDocument("COMMENT", commentId, title);
+        deleteDocumentChunks(document.getId());
         indexTextIntoDocument(document, content, true);
     }
 
@@ -96,6 +100,34 @@ public class KnowledgeIngestionService {
         }
     }
 
+    /**
+     * 按来源（sourceType + sourceId）彻底删除对应文档及其全部向量分块。
+     * 用于帖子/评论被删除或驳回时，避免 AI 问答召回已不可见的内容。
+     * 若该来源从未被索引，则为空操作（幂等）。
+     */
+    @Transactional
+    public void removeBySource(String sourceType, Long sourceId) {
+        if (sourceType == null || sourceId == null) {
+            return;
+        }
+        List<AiKnowledgeDocument> docs = documentMapper.selectBySource(sourceType, sourceId);
+        if (docs.isEmpty()) {
+            return;
+        }
+        for (AiKnowledgeDocument doc : docs) {
+            if (doc.getId() != null) {
+                chunkMapper.deleteByDocumentId(doc.getId());
+            }
+        }
+        List<Long> ids = docs.stream()
+                .map(AiKnowledgeDocument::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (!ids.isEmpty()) {
+            documentMapper.deleteBatchIds(ids);
+        }
+    }
+
     public void reindexExistingDocument(AiKnowledgeDocument document) {
         if (document == null || document.getId() == null) {
             return;
@@ -113,6 +145,29 @@ public class KnowledgeIngestionService {
             deleteDocumentChunks(document.getId());
             markFailed(document, e);
         }
+    }
+
+    /**
+     * 按来源（sourceType + sourceId）查找已有文档并复用，不存在则新建。
+     * 配合 V11 的部分唯一索引，避免同一帖子/评论被重复索引成多个文档。
+     * 复用时会把标题/状态刷新为最新，并由调用方负责清理其旧分块后重新写入。
+     */
+    private AiKnowledgeDocument findOrCreateDocument(String sourceType, Long sourceId, String title) {
+        if (sourceId != null) {
+            List<AiKnowledgeDocument> existing = documentMapper.selectBySource(sourceType, sourceId);
+            if (!existing.isEmpty()) {
+                AiKnowledgeDocument doc = existing.stream()
+                        .max(java.util.Comparator.comparing(AiKnowledgeDocument::getId))
+                        .orElse(existing.get(0));
+                doc.setTitle(truncate(titleOrFallback(title, "未命名资料"), 200));
+                doc.setStatus(STATUS_INDEXING);
+                doc.setErrorMessage(null);
+                doc.setUpdatedAt(LocalDateTime.now());
+                documentMapper.updateById(doc);
+                return doc;
+            }
+        }
+        return createDocument(title, sourceType, sourceId, null, null, null);
     }
 
     private AiKnowledgeDocument createDocument(String title, String sourceType, Long sourceId,
@@ -151,6 +206,7 @@ public class KnowledgeIngestionService {
             throw new IllegalStateException("未提取到可索引文本");
         }
         List<AiKnowledgeChunk> knowledgeChunks = new ArrayList<>();
+        Set<String> seenHashes = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         for (int i = 0; i < chunks.size(); i++) {
             String content = chunks.get(i);
@@ -162,6 +218,11 @@ public class KnowledgeIngestionService {
                         document.getId(), i, truncate(sanitized, 120));
                 continue;
             }
+            // 同一批次内完全相同的片段去重（基于 content_hash），避免重复向量与检索重复命中。
+            String hash = sha256(sanitized);
+            if (!seenHashes.add(hash)) {
+                continue;
+            }
             List<Double> embedding = aiProviderClient.createEmbedding(sanitized);
             AiKnowledgeChunk chunk = new AiKnowledgeChunk();
             chunk.setDocumentId(document.getId());
@@ -170,7 +231,7 @@ public class KnowledgeIngestionService {
             chunk.setChunkIndex(i);
             chunk.setTitle(document.getTitle());
             chunk.setContent(sanitized);
-            chunk.setContentHash(sha256(sanitized));
+            chunk.setContentHash(hash);
             chunk.setEmbedding(toVectorLiteral(embedding));
             chunk.setTokenCount(sanitized.length());
             chunk.setCreatedAt(now);

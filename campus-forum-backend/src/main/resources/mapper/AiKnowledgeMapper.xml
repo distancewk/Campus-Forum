@@ -65,11 +65,11 @@
             c.title,
             c.content,
             (
-                0.65 * (1 - (c.embedding &lt;=&gt; CAST(#{embedding} AS vector))) +
-                0.35 * CASE
-                    WHEN c.content ILIKE CONCAT('%', #{keyword}, '%') OR c.title ILIKE CONCAT('%', #{keyword}, '%')
-                    THEN 1 ELSE 0
-                END
+                0.7 * (1 - (c.embedding &lt;=&gt; CAST(#{embedding} AS vector))) +
+                0.3 * GREATEST(
+                    similarity(c.content, #{keyword}),
+                    similarity(c.title, #{keyword})
+                )
             ) AS score
         FROM ai_knowledge_chunk c
         JOIN ai_knowledge_document d ON c.document_id = d.id
