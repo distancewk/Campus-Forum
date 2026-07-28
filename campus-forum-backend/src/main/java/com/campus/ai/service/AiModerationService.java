@@ -93,7 +93,7 @@ public class AiModerationService {
      * MEDIUM 维持原样（转人工复核）。
      */
     private void normalizeRiskLevel(AiModerationAdvice advice) {
-        double confidence = advice.getConfidence();
+        Double confidence = advice.getConfidence();
         String level = advice.getRiskLevel();
         if ("REJECT".equalsIgnoreCase(advice.getSuggestedAction()) && "LOW".equals(level)) {
             advice.setRiskLevel("MEDIUM");
@@ -101,13 +101,14 @@ public class AiModerationService {
             return;
         }
         if ("LOW".equals(level)) {
-            if (confidence < mediumThreshold) {
+            // 仅当模型"明确给出低置信度"时才升级人工复核；缺省（null）视为无低置信信号，保持 LOW 自动放行。
+            if (confidence != null && confidence < mediumThreshold) {
                 advice.setRiskLevel("MEDIUM");
                 log.warn("AI 审核：低置信度 LOW（confidence={} < {}）升级为 MEDIUM 转人工复核",
                         confidence, mediumThreshold);
             }
         } else if ("HIGH".equals(level)) {
-            if (confidence < highThreshold) {
+            if (confidence != null && confidence < highThreshold) {
                 advice.setRiskLevel("MEDIUM");
                 log.info("AI 审核：低置信度 HIGH（confidence={} < {}）降级为 MEDIUM（仍转人工复核）",
                         confidence, highThreshold);
@@ -125,7 +126,8 @@ public class AiModerationService {
         result.setAuthorId(authorId);
         result.setRiskLevel(advice.getRiskLevel());
         result.setRiskTypes(toJson(advice.getRiskTypes()));
-        result.setConfidence(advice.getConfidence());
+        // confidence 可能为 null（模型未返回），列 NOT NULL，兜底为 0。
+        result.setConfidence(advice.getConfidence() == null ? 0.0 : advice.getConfidence());
         result.setReasons(toJson(advice.getReasons()));
         result.setSuggestedAction(advice.getSuggestedAction());
         result.setModelName(advice.getModelName());

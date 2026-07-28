@@ -13,7 +13,8 @@ import java.util.List;
 public class AiModerationAdvice {
     private String riskLevel;
     private List<String> riskTypes = new ArrayList<>();
-    private double confidence;
+    // 可空：模型未返回置信度时保持 null，避免把"缺省 0"误判为"低置信"而错误升级人工复核。
+    private Double confidence;
     private List<String> reasons = new ArrayList<>();
     private String suggestedAction;
     private String modelName;
