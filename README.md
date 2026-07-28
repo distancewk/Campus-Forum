@@ -228,3 +228,14 @@ docker compose up -d --build
 ## 许可证
 
 本仓库未声明许可证，请在使用前与作者确认。
+
+<!-- auto-generated: readme-links:start -->
+## Project navigation
+
+<!-- generated-from: sha256:5b57ff9c7b1f2038d65744e95a058c42dddf4a6026b85c00d751ffb452cc23f6 -->
+This project was classified as **large** for documentation depth.
+
+- [Project map](docs/PROJECT_MAP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Code guide](docs/CODE_GUIDE.md)
+<!-- auto-generated: readme-links:end -->
