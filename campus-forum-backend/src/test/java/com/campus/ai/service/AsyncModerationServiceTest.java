@@ -1,13 +1,16 @@
 package com.campus.ai.service;
 
+import com.campus.ai.config.AiProperties;
 import com.campus.ai.dto.AiModerationAdvice;
 import com.campus.ai.exception.ContentRejectedException;
 import com.campus.comment.mapper.CommentMapper;
+import com.campus.notification.service.NotificationService;
 import com.campus.post.mapper.PostMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -29,8 +32,19 @@ class AsyncModerationServiceTest {
     @Mock
     private CommentMapper commentMapper;
 
+    @Mock
+    private AiProperties aiProperties;
+
+    @Mock
+    private NotificationService notificationService;
+
     private AsyncModerationService service() {
-        return new AsyncModerationService(aiModerationService, postMapper, commentMapper);
+        AsyncModerationService svc = new AsyncModerationService(aiModerationService, postMapper,
+                commentMapper, aiProperties, notificationService);
+        // @Value moderationEnabled 在纯 Mockito 测试中不会被注入，需手动置为启用，使 aiActive() 返回 true。
+        when(aiProperties.isEnabled()).thenReturn(true);
+        ReflectionTestUtils.setField(svc, "moderationEnabled", true);
+        return svc;
     }
 
     private AiModerationAdvice advice(String level, double confidence) {
@@ -66,13 +80,13 @@ class AsyncModerationServiceTest {
     }
 
     @Test
-    void moderatePostWithImageStaysPendingEvenIfLow() {
-        // 含图帖子图片未审，一律转人工复核，不自动放行。
+    void moderatePostLowAllowsEvenWhenContentMentionsImage() {
+        // 现行策略（commit 24e83f4）：AI 审核不再因疑似图片而阻断发布；LOW 风险即放行（status=1）。
         when(aiModerationService.review("POST", "笔记", "请看图", 1L, 13L)).thenReturn(advice("LOW", 0.99));
 
         service().moderatePost(13L, "笔记", "请看图", 1L, true);
 
-        verify(postMapper).updateStatusById(13L, 0);
+        verify(postMapper).updateStatusById(13L, 1);
     }
 
     @Test
@@ -90,7 +104,7 @@ class AsyncModerationServiceTest {
     void moderateCommentLowIncrementsCount() {
         when(aiModerationService.review("COMMENT", null, "正常评论", 2L, 20L)).thenReturn(advice("LOW", 0.9));
 
-        service().moderateComment(20L, 5L, "正常评论", 2L);
+        service().moderateComment(20L, 5L, "正常评论", 2L, true);
 
         verify(commentMapper).updateStatusById(20L, 1);
         verify(postMapper).updateCommentCount(5L, 1);
@@ -100,7 +114,7 @@ class AsyncModerationServiceTest {
     void moderateCommentMediumDoesNotIncrementCount() {
         when(aiModerationService.review("COMMENT", null, "兼职日结", 2L, 21L)).thenReturn(advice("MEDIUM", 0.8));
 
-        service().moderateComment(21L, 5L, "兼职日结", 2L);
+        service().moderateComment(21L, 5L, "兼职日结", 2L, true);
 
         verify(commentMapper).updateStatusById(21L, 0);
         verify(postMapper, never()).updateCommentCount(anyLong(), eq(1));

@@ -1,11 +1,14 @@
 package com.campus.comment.service;
 
+import com.campus.ai.config.AiProperties;
 import com.campus.ai.service.AsyncModerationService;
+import com.campus.ai.service.KnowledgeIngestionService;
 import com.campus.comment.dto.CommentCreateRequest;
 import com.campus.comment.dto.CommentVO;
 import com.campus.comment.entity.Comment;
 import com.campus.comment.mapper.CommentMapper;
 import com.campus.interaction.mapper.LikeMapper;
+import com.campus.notification.service.NotificationService;
 import com.campus.post.entity.Post;
 import com.campus.post.mapper.PostMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -17,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -43,11 +47,27 @@ class CommentServiceAiModerationTest {
     @Mock
     private AsyncModerationService asyncModerationService;
 
+    @Mock
+    private AiProperties aiProperties;
+
+    @Mock
+    private NotificationService notificationService;
+
+    @Mock
+    private KnowledgeIngestionService knowledgeIngestionService;
+
     private CommentService commentService;
 
     @BeforeEach
     void setUp() {
-        commentService = new CommentService(commentMapper, postMapper, likeMapper, asyncModerationService);
+        commentService = new CommentService(commentMapper, postMapper, likeMapper,
+                asyncModerationService, aiProperties, notificationService, knowledgeIngestionService);
+        // 模拟 AI 审核启用且为"先审后发"（pre）模式，使新建评论以待审(pending)落库并派发异步审核。
+        when(aiProperties.isEnabled()).thenReturn(true);
+        AiProperties.Moderation moderation = new AiProperties.Moderation();
+        moderation.setMode("pre");
+        when(aiProperties.getModeration()).thenReturn(moderation);
+        ReflectionTestUtils.setField(commentService, "moderationEnabled", true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(200L, null, List.of())
         );
@@ -74,7 +94,8 @@ class CommentServiceAiModerationTest {
         assertThat(response.getStatus()).isEqualTo(0);
         assertThat(response.getPendingReview()).isTrue();
         // 审核被异步派发；评论计数增量移到异步"通过"分支执行，此处不计入。
-        verify(asyncModerationService).moderateComment(20L, 5L, "正常经验分享", 200L);
+        // 新建评论处于待审(pending)，故 wasPending=true。
+        verify(asyncModerationService).moderateComment(20L, 5L, "正常经验分享", 200L, true);
         verify(postMapper, never()).updateCommentCount(5L, 1);
     }
 

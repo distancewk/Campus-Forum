@@ -5,6 +5,7 @@ import com.campus.comment.mapper.CommentMapper;
 import com.campus.interaction.dto.ToggleResponse;
 import com.campus.interaction.entity.Like;
 import com.campus.interaction.mapper.LikeMapper;
+import com.campus.notification.service.NotificationService;
 import com.campus.post.entity.Post;
 import com.campus.post.mapper.PostMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +33,14 @@ class LikeServiceTest {
     @Mock
     private CommentMapper commentMapper;
 
+    @Mock
+    private NotificationService notificationService;
+
     private LikeService likeService;
 
     @BeforeEach
     void setUp() {
-        likeService = new LikeService(likeMapper, postMapper, commentMapper);
+        likeService = new LikeService(likeMapper, postMapper, commentMapper, notificationService);
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.campus.ai.service.KnowledgeIngestionService;
 import com.campus.auth.mapper.UserMapper;
 import com.campus.comment.entity.Comment;
 import com.campus.comment.mapper.CommentMapper;
+import com.campus.notification.service.NotificationService;
 import com.campus.post.mapper.PostMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,12 +41,15 @@ class AdminServiceCommentAuditTest {
     @Mock
     private KnowledgeIngestionService knowledgeIngestionService;
 
+    @Mock
+    private NotificationService notificationService;
+
     private AdminService adminService;
 
     @BeforeEach
     void setUp() {
         adminService = new AdminService(userMapper, postMapper, commentMapper,
-                aiModerationService, knowledgeIngestionService);
+                aiModerationService, knowledgeIngestionService, notificationService);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(900L, null, List.of())
         );
