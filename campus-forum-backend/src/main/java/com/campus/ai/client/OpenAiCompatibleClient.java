@@ -231,7 +231,12 @@ public class OpenAiCompatibleClient implements AiProviderClient {
             };
         }
         List<String> riskTypes = pickTextList(node, "riskTypes", "风险类型", "risk_types").stream()
-                .map(t -> normalizeByAlias(t, RISK_TYPE_ALIASES))
+                // 未知枚举保留原始值，交由 validateModerationAdvice 统一拒绝（fail-closed），
+                // 避免被 filter 静默丢弃后绕过校验（修复：未知 riskTypes 此前被 .filter 丢弃导致校验失效）。
+                .map(t -> {
+                    String canonical = normalizeByAlias(t, RISK_TYPE_ALIASES);
+                    return canonical != null ? canonical : t;
+                })
                 .filter(Objects::nonNull)
                 .toList();
         Double confidence = pickDoubleOrNull(node, "confidence", "置信度", "confidence_score", "score");
